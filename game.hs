@@ -47,6 +47,18 @@ initialGameState = GameState
     gameMap = gameMap1
   }
 
+-----------------------------------------------
+
+addCouples :: (Num a) => (Num b) => (a, b) -> (a, b) -> (a, b)
+addCouples first second =
+  ((fst first) + (fst second),(snd first) + (snd second))
+
+-----------------------------------------------
+
+roundCouple :: (RealFrac a) => (RealFrac b) => (a, b) -> (Int, Int)
+roundCouple couple =
+  (round (fst couple),round (snd couple))
+
 -----------------------------------------------   Converts 2D map coords to 1D array coords.
 
 mapToArrayCoords :: (Int, Int) -> Int
@@ -71,14 +83,25 @@ renderGameState3D gameState =
 
 getDistanceMap :: GameState -> [Float]
 getDistanceMap gameState =
-  [castRay gameState (playerPos gameState) (x * rayAngleStep) | x <- [0..(fst screenSize) - 1]]
+  [castRay gameState (playerPos gameState) (roundCouple (playerPos gameState))  (x * rayAngleStep) | x <- [0..(fst screenSize) - 1]]
 
 -----------------------------------------------   Casts a ray and returns distance.
 
-castRay :: GameState -> (Float, Float) -> Float -> Float
-castRay gameState rayOrigin rayDirection =
-  10.0  -- TODO
-
+castRay :: GameState -> (Float, Float) -> (Int, Int) -> Float -> Float
+castRay gameState rayOrigin square rayDirection =
+  0
+{- 
+  let
+    squareCoords = roundCouple rayOrigin
+  in
+    if mapSquareAt gameState squareCoords == squareWall
+      then 0
+      else
+        let
+          squareCastResult = castRaySquare squareCoords rayOrigin rayDirection
+        in
+          pointPointDistance rayOrigin (fst squareCastResult) + castRay gameState (fst squareCastResult) (addCouples square (snd squareCastResult)) rayDirection
+-}
 -----------------------------------------------   Gets distance of two points.
 
 pointPointDistance :: (Float, Float) -> (Float, Float) -> Float
@@ -172,11 +195,12 @@ renderGameStateSimple gameState =
 
 mapSquareAt :: GameState -> (Int, Int) -> MapSquare
 mapSquareAt gameState coords =
-   (gameMap gameState) !! (mapToArrayCoords coords)
+   if (fst coords) < (fst mapSize) && (fst coords) >= 0 && (snd coords) < (snd mapSize) && (snd coords) >= 0
+    then (gameMap gameState) !! (mapToArrayCoords coords)
+    else squareWall
 
 -----------------------------------------------   Checks if given player position is walid (collisions).
 
-positionIsWalkable :: GameState -> (Float, Float) -> Bool
 positionIsWalkable gameState position =
   not (floor (fst position) < 0) &&
   not (floor (fst position) >= (fst mapSize)) &&
