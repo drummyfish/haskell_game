@@ -8,7 +8,11 @@ inputTimeout = 50000
 stepLength = 0.05
 rotationStep = 0.05
 mapSize = (10,10)
+screenSize = (20,10)
+fieldOfView = pi / 2.0
+
 totalMapSquares = (fst mapSize) * (snd mapSize)
+rayAngleStep = fieldOfView / fromIntegral (fst mapSize)
 
 squareEmpty = 0                     -- map square enums
 squareWall = 1
@@ -55,11 +59,82 @@ arrayToMapCoords :: Int -> (Int, Int)
 arrayToMapCoords coords =
   (mod coords (fst mapSize),div coords (fst mapSize))
 
+-----------------------------------------------   Renders the game in 3D.
+
+renderGameState3D :: GameState -> String
+renderGameState3D gameState =
+  (renderGameStateSimple gameState)
+  ++
+  (show (getDistanceMap gameState))
+
+-----------------------------------------------   Gets the distance map with ray casting from player's view.
+
+getDistanceMap :: GameState -> [Float]
+getDistanceMap gameState =
+  [castRay gameState (playerPos gameState) (x * rayAngleStep) | x <- [0..(fst screenSize) - 1]]
+
+-----------------------------------------------   Casts a ray and returns distance.
+
+castRay :: GameState -> (Float, Float) -> Float -> Float
+castRay gameState rayOrigin rayDirection =
+  10.0  -- TODO
+
+-----------------------------------------------   Gets distance of two points.
+
+pointPointDistance :: (Float, Float) -> (Float, Float) -> Float
+pointPointDistance point1 point2 =
+  let
+    dx = (fst point1) - (fst point2)
+    dy = (snd point1) - (snd point2)
+  in
+    sqrt (dx * dx + dy * dy)
+
+-----------------------------------------------   Makes the angle safe for tan function.
+
+safeAngle :: Float -> Float
+safeAngle angle =
+  if mod' angle (pi / 2) == 0.0
+    then angle + 0.0001
+    else angle
+
+-----------------------------------------------   Computes an intersection point of two lines.
+
+lineLineIntersection :: (Float, Float) -> Float -> (Float, Float) -> Float -> (Float, Float)
+lineLineIntersection position1 angle1 position2 angle2 =
+  let
+    tan1 = tan (safeAngle angle1)
+    tan2 = tan (safeAngle angle2)
+    p1x  = fst position1
+    p1y  = snd position1
+    p2x  = fst position2
+    p2y  = snd position2
+    denominator = tan1 - tan2
+  in
+    let x = (p2y - tan2 * p2x - p1y + tan1 * p1x) / denominator
+    in (x,if abs tan1 < abs tan2 then tan1 * x + (p1y - tan1 * p1x) else tan2 * x + (p2y - tan2 * p2x))
+
+-----------------------------------------------   Casts a ray inside a single square.
+
+castRaySquare :: (Int, Int) -> (Float, Float) -> Float -> ((Float, Float),(Int, Int)) -- result = (intersection,next square offset)
+castRaySquare squareCoords rayPosition rayAngle =
+  let
+    angle = 2 * pi - rayAngle
+  in
+    let
+      boundX = (fst squareCoords) + if angle < (pi / 2) || angle > (pi + pi / 2) then 1 else 0
+      boundY = (snd squareCoords) + if angle < pi then 1 else 0
+    in
+      let intersection1 = lineLineIntersection rayPosition angle (fromIntegral boundX,fromIntegral (snd squareCoords)) (pi / 2)
+          intersection2 = lineLineIntersection rayPosition angle (fromIntegral (fst squareCoords),fromIntegral boundY) 0
+      in
+        if (pointPointDistance rayPosition intersection1) <= (pointPointDistance rayPosition intersection2)
+          then (intersection1,(if boundX == 1 then 1 else -1,0))
+          else (intersection2,(0,if boundY == 1 then 1 else -1))
+
 -----------------------------------------------   Renders the game state into string, simple version.
 
 renderGameStateSimple :: GameState -> String
 renderGameStateSimple gameState =
-
   concat
     (
       map
@@ -91,7 +166,7 @@ renderGameStateSimple gameState =
         ) (zip (gameMap gameState) [0..])
     )
   ++
-  "\npos: " ++ (show (playerPos gameState)) ++ "\nrot: " ++ (show (playerRot gameState)) ++ "\n-----"
+  "\npos: " ++ (show (playerPos gameState)) ++ "\nrot: " ++ (show (playerRot gameState)) ++ "\n"
 
 -----------------------------------------------   Returns map square at given corrds.
 
@@ -148,7 +223,7 @@ nextGameState previousGameState inputChar =
 loop :: GameState -> IO ()
 loop gameState =
   do
-    putStrLn (renderGameStateSimple gameState)
+    putStrLn (renderGameState3D gameState)
 
     c <- timeout inputTimeout getChar -- wait for input, with timeout
 
