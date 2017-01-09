@@ -8,7 +8,7 @@ inputTimeout = 50000
 stepLength = 0.05
 rotationStep = 0.05
 mapSize = (10,10)
-screenSize = (20,10)
+screenSize = (10,7)
 fieldOfView = pi / 2.0
 
 totalMapSquares = (fst mapSize) * (snd mapSize)
@@ -42,7 +42,7 @@ data GameState = GameState
 
 initialGameState = GameState
   {
-    playerPos = (0.0,0.0),
+    playerPos = (0.5,0.5),
     playerRot = 0.0,
     gameMap = gameMap1
   }
@@ -55,9 +55,9 @@ addCouples first second =
 
 -----------------------------------------------
 
-roundCouple :: (RealFrac a) => (RealFrac b) => (a, b) -> (Int, Int)
-roundCouple couple =
-  (round (fst couple),round (snd couple))
+floorCouple :: (RealFrac a) => (RealFrac b) => (a, b) -> (Int, Int)
+floorCouple couple =
+  (floor (fst couple),floor (snd couple))
 
 -----------------------------------------------   Converts 2D map coords to 1D array coords.
 
@@ -75,33 +75,55 @@ arrayToMapCoords coords =
 
 renderGameState3D :: GameState -> String
 renderGameState3D gameState =
-  (renderGameStateSimple gameState)
-  ++
-  (show (getDistanceMap gameState))
+
+  let
+    distanceMap = (getDistanceMap gameState)
+  in
+    (renderGameStateSimple gameState)
+    ++
+    (show distanceMap)
+
+    ++
+    "\n"
+    ++
+    (
+      map
+        (\d ->
+           if      d < 0.5 then '#'
+           else if d < 1   then '='
+           else if d < 1.5 then '-'
+           else '.'
+        )
+        distanceMap
+    )
 
 -----------------------------------------------   Gets the distance map with ray casting from player's view.
 
-getDistanceMap :: GameState -> [Float]
+getDistanceMap :: GameState ->       [Float]
 getDistanceMap gameState =
-  [castRay gameState (playerPos gameState) (roundCouple (playerPos gameState))  (x * rayAngleStep) | x <- [0..(fst screenSize) - 1]]
+  
+--  castRay gameState (playerPos gameState) (floorCouple (playerPos gameState)) (playerRot gameState) 5
+
+  [castRay gameState (playerPos gameState) (floorCouple (playerPos gameState)) ((playerRot gameState) - pi - fieldOfView / 2 + x * rayAngleStep) 5 | x <- [0..(fst screenSize) - 1]]
 
 -----------------------------------------------   Casts a ray and returns distance.
 
-castRay :: GameState -> (Float, Float) -> (Int, Int) -> Float -> Float
-castRay gameState rayOrigin square rayDirection =
-  0
-{- 
+castRay :: GameState -> (Float, Float) -> (Int, Int) -> Float -> Int ->  Float
+castRay gameState rayOrigin square rayDirection maxIterations =
   let
-    squareCoords = roundCouple rayOrigin
+    squareCoords = floorCouple rayOrigin
   in
-    if mapSquareAt gameState squareCoords == squareWall
+    if (mapSquareAt gameState square) /= squareEmpty || maxIterations == 0
       then 0
       else
         let
           squareCastResult = castRaySquare squareCoords rayOrigin rayDirection
         in
-          pointPointDistance rayOrigin (fst squareCastResult) + castRay gameState (fst squareCastResult) (addCouples square (snd squareCastResult)) rayDirection
--}
+     --     show (mapSquareAt gameState squareCoords) ++ show rayOrigin ++ show square ++ show rayDirection ++ " res: " ++ show squareCastResult ++ "   " ++ castRay gameState (fst squareCastResult) (addCouples square (snd squareCastResult)) rayDirection (maxIterations - 1)
+     --     show square ++ "   " ++ castRay gameState (fst squareCastResult) (addCouples square (snd squareCastResult)) rayDirection (maxIterations - 1)
+
+          pointPointDistance rayOrigin (fst squareCastResult) + castRay gameState (fst squareCastResult) (addCouples square (snd squareCastResult)) rayDirection (maxIterations - 1)
+
 -----------------------------------------------   Gets distance of two points.
 
 pointPointDistance :: (Float, Float) -> (Float, Float) -> Float
@@ -151,8 +173,8 @@ castRaySquare squareCoords rayPosition rayAngle =
           intersection2 = lineLineIntersection rayPosition angle (fromIntegral (fst squareCoords),fromIntegral boundY) 0
       in
         if (pointPointDistance rayPosition intersection1) <= (pointPointDistance rayPosition intersection2)
-          then (intersection1,(if boundX == 1 then 1 else -1,0))
-          else (intersection2,(0,if boundY == 1 then 1 else -1))
+          then (intersection1,(if boundX == (fst squareCoords) then -1 else 1,0))
+          else (intersection2,(0,if boundY == (snd squareCoords) then -1 else 1))
 
 -----------------------------------------------   Renders the game state into string, simple version.
 
@@ -195,18 +217,14 @@ renderGameStateSimple gameState =
 
 mapSquareAt :: GameState -> (Int, Int) -> MapSquare
 mapSquareAt gameState coords =
-   if (fst coords) < (fst mapSize) && (fst coords) >= 0 && (snd coords) < (snd mapSize) && (snd coords) >= 0
+   if ((fst coords) < (fst mapSize)) && ((fst coords) >= 0) && ((snd coords) < (snd mapSize)) && ((snd coords) >= 0)
     then (gameMap gameState) !! (mapToArrayCoords coords)
     else squareWall
 
 -----------------------------------------------   Checks if given player position is walid (collisions).
 
 positionIsWalkable gameState position =
-  not (floor (fst position) < 0) &&
-  not (floor (fst position) >= (fst mapSize)) &&
-  not (floor (snd position) < 0) &&
-  not (floor (snd position) >= (snd mapSize)) &&
-  (mapSquareAt gameState (floor (fst position),floor (snd position))) == squareEmpty
+  (mapSquareAt gameState (floorCouple position)) == squareEmpty
 
 -----------------------------------------------   Moves the player forward by given distance, with collisions.
 
