@@ -71,6 +71,12 @@ arrayToMapCoords :: Int -> (Int, Int)
 arrayToMapCoords coords =
   (mod coords (fst mapSize),div coords (fst mapSize))
 
+-----------------------------------------------
+
+angleTo02Pi :: Float -> Float
+angleTo02Pi angle =
+  mod' angle (2 * pi)
+
 -----------------------------------------------   Renders the game in 3D.
 
 renderGameState3D :: GameState -> String
@@ -89,22 +95,26 @@ renderGameState3D gameState =
     (
       map
         (\d ->
-           if      d < 0.5 then '#'
-           else if d < 1   then '='
-           else if d < 1.5 then '-'
-           else '.'
+           if      d < 1  then '0'
+           else if d < 2  then '1'
+           else if d < 3  then '2'
+           else if d < 4  then '3'
+           else if d < 5  then '4'
+           else if d < 6  then '5'
+           else if d < 7  then '6'
+           else '7'
         )
         distanceMap
     )
 
 -----------------------------------------------   Gets the distance map with ray casting from player's view.
 
-getDistanceMap :: GameState ->       [Float]
+getDistanceMap :: GameState -> [Float]
 getDistanceMap gameState =
   
---  castRay gameState (playerPos gameState) (floorCouple (playerPos gameState)) (playerRot gameState) 5
+--  castRay gameState (playerPos gameState) (floorCouple (playerPos gameState)) (playerRot gameState) 3
 
-  [castRay gameState (playerPos gameState) (floorCouple (playerPos gameState)) ((playerRot gameState) - pi - fieldOfView / 2 + x * rayAngleStep) 5 | x <- [0..(fst screenSize) - 1]]
+  [castRay gameState (playerPos gameState) (floorCouple (playerPos gameState)) ((playerRot gameState) - fieldOfView / 2 + x * rayAngleStep) 10 | x <- [0..(fst screenSize) - 1]]
 
 -----------------------------------------------   Casts a ray and returns distance.
 
@@ -112,17 +122,18 @@ castRay :: GameState -> (Float, Float) -> (Int, Int) -> Float -> Int ->  Float
 castRay gameState rayOrigin square rayDirection maxIterations =
   let
     squareCoords = floorCouple rayOrigin
+    angle = angleTo02Pi rayDirection
   in
     if (mapSquareAt gameState square) /= squareEmpty || maxIterations == 0
       then 0
       else
         let
-          squareCastResult = castRaySquare squareCoords rayOrigin rayDirection
+          squareCastResult = castRaySquare squareCoords rayOrigin angle
         in
-     --     show (mapSquareAt gameState squareCoords) ++ show rayOrigin ++ show square ++ show rayDirection ++ " res: " ++ show squareCastResult ++ "   " ++ castRay gameState (fst squareCastResult) (addCouples square (snd squareCastResult)) rayDirection (maxIterations - 1)
-     --     show square ++ "   " ++ castRay gameState (fst squareCastResult) (addCouples square (snd squareCastResult)) rayDirection (maxIterations - 1)
+     --     show (mapSquareAt gameState squareCoords) ++ show rayOrigin ++ show square ++ show angle ++ " res: " ++ show squareCastResult ++ "   " ++ castRay gameState (fst squareCastResult) (addCouples square (snd squareCastResult)) rayDirection (maxIterations - 1)
+--          show square ++ show (pointPointDistance rayOrigin (fst squareCastResult)) ++ "   " ++ castRay gameState (fst squareCastResult) (addCouples square (snd squareCastResult)) angle (maxIterations - 1)
 
-          pointPointDistance rayOrigin (fst squareCastResult) + castRay gameState (fst squareCastResult) (addCouples square (snd squareCastResult)) rayDirection (maxIterations - 1)
+          pointPointDistance rayOrigin (fst squareCastResult) + castRay gameState (fst squareCastResult) (addCouples square (snd squareCastResult)) angle (maxIterations - 1)
 
 -----------------------------------------------   Gets distance of two points.
 
@@ -256,8 +267,8 @@ nextGameState previousGameState inputChar =
   case inputChar of
     'w' -> movePlayer previousGameState stepLength
     's' -> movePlayer previousGameState (-1 * stepLength)
-    'a' -> previousGameState { playerRot = mod' ((playerRot previousGameState) + rotationStep) (2 * pi) }
-    'd' -> previousGameState { playerRot = mod' ((playerRot previousGameState) - rotationStep) (2 * pi) }
+    'a' -> previousGameState { playerRot = angleTo02Pi ((playerRot previousGameState) + rotationStep) }
+    'd' -> previousGameState { playerRot = angleTo02Pi ((playerRot previousGameState) - rotationStep) }
     _   -> previousGameState
 
 -----------------------------------------------   Main game loop.
