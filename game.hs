@@ -8,16 +8,22 @@ inputTimeout = 50000
 stepLength = 0.05
 rotationStep = 0.05
 mapSize = (10,10)
-screenSize = (10,7)
+screenSize = (30,12)
 fieldOfView = pi / 2.0
 
 totalMapSquares = (fst mapSize) * (snd mapSize)
 rayAngleStep = fieldOfView / fromIntegral (fst mapSize)
 
+
+type MapSquare = Int
 squareEmpty = 0                     -- map square enums
 squareWall = 1
 
-type MapSquare = Int
+type Normal = Int
+normalNorth = 0
+normalEast = 1
+normalSouth = 2
+normalWest = 3
 
 gameMap1 = 
   [
@@ -77,21 +83,57 @@ angleTo02Pi :: Float -> Float
 angleTo02Pi angle =
   mod' angle (2 * pi)
 
+-----------------------------------------------
+
+draw3Dview :: [(Float,Normal)] -> Int -> String
+draw3Dview drawInfo height =
+  let
+    middle = div height 2 + 1
+    halfHeight = (fromIntegral height) / 2
+  in
+    concat[
+           map (
+                \item -> if abs (middle - i) < floor (  (5.0 / ((fst item) + 5.0)) * halfHeight  )
+                           then
+                             if (snd item) == normalNorth then      ';'
+                             else if (snd item) == normalEast then  ':'
+                             else if (snd item) == normalSouth then '.'
+                             else                                   'L'
+                           else ' ') drawInfo ++ "\n"
+           | i <- [1..height]]
+
+-----------------------------------------------
+
+drawDistanceMap :: [Float] -> Int -> String
+drawDistanceMap distanceMap height =
+  let
+    middle = div height 2 + 1
+    halfHeight = (fromIntegral height) / 2
+  in
+    concat[
+           map (
+                \d -> if abs (middle - i) < floor (  (5.0 / (d + 5.0)) * halfHeight  )
+                       then '#'
+                       else '.') distanceMap ++ "\n"
+           | i <- [1..height]]
+
 -----------------------------------------------   Renders the game in 3D.
 
 renderGameState3D :: GameState -> String
 renderGameState3D gameState =
 
   let
-    distanceMap = (getDistanceMap gameState)
+    drawInfo = (renderDrawInfo gameState)
   in
     (renderGameStateSimple gameState)
     ++
-    (show distanceMap)
+ --   (show distanceMap)
 
-    ++
+ --   ++
     "\n"
     ++
+    draw3Dview drawInfo (snd screenSize)
+{-
     (
       map
         (\d ->
@@ -106,34 +148,48 @@ renderGameState3D gameState =
         )
         distanceMap
     )
-
+-}
 -----------------------------------------------   Gets the distance map with ray casting from player's view.
 
-getDistanceMap :: GameState -> [Float]
-getDistanceMap gameState =
+renderDrawInfo :: GameState -> [(Float, Normal)]
+renderDrawInfo gameState =
   
 --  castRay gameState (playerPos gameState) (floorCouple (playerPos gameState)) (playerRot gameState) 3
-
-  [castRay gameState (playerPos gameState) (floorCouple (playerPos gameState)) ((playerRot gameState) - fieldOfView / 2 + x * rayAngleStep) 10 | x <- [0..(fst screenSize) - 1]]
+  [
+    castRay gameState (playerPos gameState) (floorCouple (playerPos gameState)) ((playerRot gameState) - fieldOfView / 2 + x * rayAngleStep) 10
+    | x <- [0..(fst screenSize) - 1]
+  ]
 
 -----------------------------------------------   Casts a ray and returns distance.
 
-castRay :: GameState -> (Float, Float) -> (Int, Int) -> Float -> Int ->  Float
+castRay :: GameState -> (Float, Float) -> (Int, Int) -> Float -> Int ->  (Float, Normal)
 castRay gameState rayOrigin square rayDirection maxIterations =
   let
     squareCoords = floorCouple rayOrigin
     angle = angleTo02Pi rayDirection
   in
     if (mapSquareAt gameState square) /= squareEmpty || maxIterations == 0
-      then 0
+      then (0,normalNorth)
       else
         let
           squareCastResult = castRaySquare squareCoords rayOrigin angle
         in
      --     show (mapSquareAt gameState squareCoords) ++ show rayOrigin ++ show square ++ show angle ++ " res: " ++ show squareCastResult ++ "   " ++ castRay gameState (fst squareCastResult) (addCouples square (snd squareCastResult)) rayDirection (maxIterations - 1)
 --          show square ++ show (pointPointDistance rayOrigin (fst squareCastResult)) ++ "   " ++ castRay gameState (fst squareCastResult) (addCouples square (snd squareCastResult)) angle (maxIterations - 1)
-
-          pointPointDistance rayOrigin (fst squareCastResult) + castRay gameState (fst squareCastResult) (addCouples square (snd squareCastResult)) angle (maxIterations - 1)
+          let
+            recursionResult = castRay gameState (fst squareCastResult) (addCouples square (snd squareCastResult)) angle (maxIterations - 1)
+          in
+            (
+              pointPointDistance rayOrigin (fst squareCastResult) + (fst recursionResult),
+              if (fst recursionResult) /= 0
+                then (snd recursionResult)
+                else
+                  case (snd squareCastResult) of
+                    (1,0)  -> normalEast
+                    (0,1)  -> normalSouth
+                    (-1,0) -> normalNorth
+                    _      -> normalWest
+            )
 
 -----------------------------------------------   Gets distance of two points.
 
