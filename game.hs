@@ -4,17 +4,17 @@ import System.IO
 import System.Timeout
 import Data.Fixed
 import Debug.Trace
+import Control.Concurrent
 
 inputTimeout = 50000
 stepLength = 0.05
 rotationStep = 0.05
 mapSize = (10,10)
-screenSize = (30,15)
-fieldOfView = pi / 4.0
+screenSize = (150,55)
+fieldOfView = pi / 2.0
 
 totalMapSquares = (fst mapSize) * (snd mapSize)
-rayAngleStep = fieldOfView / fromIntegral (fst mapSize)
-
+rayAngleStep = fieldOfView / (fst screenSize)
 
 type MapSquare = Int
 squareEmpty = 0                     -- map square enums
@@ -94,16 +94,16 @@ draw3Dview :: [(Float, Normal)] -> Int -> String
 draw3Dview drawInfo height =
   let
     middle = div height 2 + 1
-    halfHeight = (fromIntegral height) / 2
+    heightFrac = (fromIntegral height) / 1.5
   in
     concat[
            map (
-                \item -> if abs (middle - i) < floor (  (5.0 / ((fst item) + 5.0)) * halfHeight  )
+                \item -> if abs (middle - i) < floor ( (2.0 / ((fst item) + 2.0)) * heightFrac )
                            then
-                             if (snd item) == normalNorth then      'n'
-                             else if (snd item) == normalEast then  'e'
-                             else if (snd item) == normalSouth then 's'
-                             else                                   'w'
+                             if (snd item) == normalNorth then      '.'
+                             else if (snd item) == normalEast then  'x'
+                             else if (snd item) == normalSouth then '#'
+                             else                                   'e'
                            else ' ') drawInfo ++ "\n"
            | i <- [1..height]]
 
@@ -114,10 +114,10 @@ renderGameState3D gameState =
   let
     drawInfo = (renderDrawInfo gameState)
   in
-    (renderGameStateSimple gameState)
-    ++
-    "\n"
-    ++
+  --  (renderGameStateSimple gameState)
+  --  ++
+  --  "\n"
+  --  ++
     draw3Dview drawInfo (snd screenSize)
 
 -----------------------------------------------
@@ -125,7 +125,7 @@ renderGameState3D gameState =
 renderDrawInfo :: GameState -> [(Float, Normal)]
 renderDrawInfo gameState =
   [
-    castRay gameState (playerPos gameState) (floorCouple (playerPos gameState)) ((playerRot gameState) - fieldOfView / 2 + x * rayAngleStep) 10
+    castRay gameState (playerPos gameState) (floorCouple (playerPos gameState)) ((playerRot gameState) + fieldOfView / 2 - x * rayAngleStep) 10
     | x <- [0..(fst screenSize) - 1]
   ]
 
@@ -169,8 +169,9 @@ castRaySquare squareCoords rayPosition rayAngle =
       boundX = (fst squareCoords) + if angle < (pi / 2) || angle > (pi + pi / 2) then 1 else 0
       boundY = (snd squareCoords) + if angle < pi then 1 else 0
     in
-      let intersection1 = lineLineIntersection rayPosition angle (fromIntegral boundX,fromIntegral (snd squareCoords)) (pi / 2)
-          intersection2 = lineLineIntersection rayPosition angle (fromIntegral (fst squareCoords),fromIntegral boundY) 0
+      let
+        intersection1 = lineLineIntersection rayPosition angle (fromIntegral boundX,fromIntegral (snd squareCoords)) (pi / 2)
+        intersection2 = lineLineIntersection rayPosition angle (fromIntegral (fst squareCoords),fromIntegral boundY) 0
       in
         if (pointPointDistance rayPosition intersection1) <= (pointPointDistance rayPosition intersection2)
           then (intersection1,(if boundX == (fst squareCoords) then -1 else 1,0))
@@ -299,6 +300,7 @@ nextGameState previousGameState inputChar =
 loop :: GameState -> IO ()
 loop gameState =
   do
+    --threadDelay 25000
     putStrLn (renderGameState3D gameState)
 
     c <- timeout inputTimeout getChar -- wait for input, with timeout
