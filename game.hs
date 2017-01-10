@@ -54,6 +54,10 @@ initialGameState = GameState
     gameMap = gameMap1
   }
 
+grayscaleMap = [
+  '#','$','@','B','%','8','&','W','M','0','Q','*','o','a','h','k','b','d','p','q','w','m','Z','O','I','L','C','J','U','Y','X','z','c','v','u','n',
+  'x','r','j','f','t','\\','|','(',')','1','{','}','[',']','?','-','_','+','~','>','i','!','l',';',':',',','\'','\"','^','`','\'','.']
+
 fst3 (x, _, _) = x
 snd3 (_, x, _) = x
 thd3 (_, _, x) = x
@@ -90,6 +94,18 @@ angleTo02Pi angle =
 
 -----------------------------------------------
 
+intensityToChar :: Float -> Char
+intensityToChar intensity =
+  grayscaleMap !! min (max (floor (intensity * fromIntegral (length grayscaleMap))) 0) ((length grayscaleMap) - 1)
+
+-----------------------------------------------
+
+distanceToIntensity :: Float -> Float
+distanceToIntensity distance =
+  (min (distance / 7.0) 1.0) * (-0.1)
+
+-----------------------------------------------
+
 draw3Dview :: [(Float, Normal)] -> Int -> String
 draw3Dview drawInfo height =
   let
@@ -97,14 +113,19 @@ draw3Dview drawInfo height =
     heightFrac = (fromIntegral height) / 1.5
   in
     concat[
-           map (
-                \item -> if abs (middle - i) < floor ( (2.0 / ((fst item) + 2.0)) * heightFrac )
-                           then
-                             if (snd item) == normalNorth then      '.'
-                             else if (snd item) == normalEast then  'x'
-                             else if (snd item) == normalSouth then '#'
-                             else                                   'e'
-                           else ' ') drawInfo ++ "\n"
+           let
+             distanceFromMiddle = abs (middle - i)
+           in
+             map (
+                  \item -> if distanceFromMiddle < floor ( (2.0 / ((fst item) + 2.0)) * heightFrac )
+                             then
+                               if (snd item) == normalNorth then      intensityToChar $ 0   + distanceToIntensity (fst item)
+                               else if (snd item) == normalEast then  intensityToChar $ 0.3 + distanceToIntensity (fst item)
+                               else if (snd item) == normalSouth then intensityToChar $ 0.6 + distanceToIntensity (fst item)
+                               else                                   intensityToChar $ 0.9 + distanceToIntensity (fst item)
+                             else ' ' --intensityToChar ( 5 *  (fromIntegral distanceFromMiddle) / heightFrac )
+                 ) drawInfo ++ "\n"
+           
            | i <- [1..height]]
 
 -----------------------------------------------   Renders the game in 3D.
@@ -300,8 +321,8 @@ nextGameState previousGameState inputChar =
 loop :: GameState -> IO ()
 loop gameState =
   do
-    --threadDelay 25000
     putStrLn (renderGameState3D gameState)
+    hFlush stdout
 
     c <- timeout inputTimeout getChar -- wait for input, with timeout
 
@@ -320,4 +341,5 @@ loop gameState =
 main = 
   do
     hSetBuffering stdin NoBuffering   -- to read char without [enter]
+    hSetBuffering stdout (BlockBuffering (Just 80000))   -- to read char without [enter]
     loop initialGameState
