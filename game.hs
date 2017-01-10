@@ -3,13 +3,14 @@
 import System.IO
 import System.Timeout
 import Data.Fixed
+import Debug.Trace
 
 inputTimeout = 50000
 stepLength = 0.05
 rotationStep = 0.05
 mapSize = (10,10)
-screenSize = (30,12)
-fieldOfView = pi / 2.0
+screenSize = (30,15)
+fieldOfView = pi / 4.0
 
 totalMapSquares = (fst mapSize) * (snd mapSize)
 rayAngleStep = fieldOfView / fromIntegral (fst mapSize)
@@ -53,6 +54,10 @@ initialGameState = GameState
     gameMap = gameMap1
   }
 
+fst3 (x, _, _) = x
+snd3 (_, x, _) = x
+thd3 (_, _, x) = x
+
 -----------------------------------------------
 
 addCouples :: (Num a) => (Num b) => (a, b) -> (a, b) -> (a, b)
@@ -85,7 +90,7 @@ angleTo02Pi angle =
 
 -----------------------------------------------
 
-draw3Dview :: [(Float,Normal)] -> Int -> String
+draw3Dview :: [(Float, Normal)] -> Int -> String
 draw3Dview drawInfo height =
   let
     middle = div height 2 + 1
@@ -95,72 +100,36 @@ draw3Dview drawInfo height =
            map (
                 \item -> if abs (middle - i) < floor (  (5.0 / ((fst item) + 5.0)) * halfHeight  )
                            then
-                             if (snd item) == normalNorth then      ';'
-                             else if (snd item) == normalEast then  ':'
-                             else if (snd item) == normalSouth then '.'
-                             else                                   'L'
+                             if (snd item) == normalNorth then      'n'
+                             else if (snd item) == normalEast then  'e'
+                             else if (snd item) == normalSouth then 's'
+                             else                                   'w'
                            else ' ') drawInfo ++ "\n"
-           | i <- [1..height]]
-
------------------------------------------------
-
-drawDistanceMap :: [Float] -> Int -> String
-drawDistanceMap distanceMap height =
-  let
-    middle = div height 2 + 1
-    halfHeight = (fromIntegral height) / 2
-  in
-    concat[
-           map (
-                \d -> if abs (middle - i) < floor (  (5.0 / (d + 5.0)) * halfHeight  )
-                       then '#'
-                       else '.') distanceMap ++ "\n"
            | i <- [1..height]]
 
 -----------------------------------------------   Renders the game in 3D.
 
 renderGameState3D :: GameState -> String
 renderGameState3D gameState =
-
   let
     drawInfo = (renderDrawInfo gameState)
   in
     (renderGameStateSimple gameState)
     ++
- --   (show distanceMap)
-
- --   ++
     "\n"
     ++
     draw3Dview drawInfo (snd screenSize)
-{-
-    (
-      map
-        (\d ->
-           if      d < 1  then '0'
-           else if d < 2  then '1'
-           else if d < 3  then '2'
-           else if d < 4  then '3'
-           else if d < 5  then '4'
-           else if d < 6  then '5'
-           else if d < 7  then '6'
-           else '7'
-        )
-        distanceMap
-    )
--}
------------------------------------------------   Gets the distance map with ray casting from player's view.
+
+-----------------------------------------------
 
 renderDrawInfo :: GameState -> [(Float, Normal)]
 renderDrawInfo gameState =
-  
---  castRay gameState (playerPos gameState) (floorCouple (playerPos gameState)) (playerRot gameState) 3
   [
     castRay gameState (playerPos gameState) (floorCouple (playerPos gameState)) ((playerRot gameState) - fieldOfView / 2 + x * rayAngleStep) 10
     | x <- [0..(fst screenSize) - 1]
   ]
 
------------------------------------------------   Casts a ray and returns distance.
+-----------------------------------------------   Casts a ray and returns an information (distance, normal) about a wall it hits.
 
 castRay :: GameState -> (Float, Float) -> (Int, Int) -> Float -> Int ->  (Float, Normal)
 castRay gameState rayOrigin square rayDirection maxIterations =
@@ -172,10 +141,8 @@ castRay gameState rayOrigin square rayDirection maxIterations =
       then (0,normalNorth)
       else
         let
-          squareCastResult = castRaySquare squareCoords rayOrigin angle
+          squareCastResult = castRaySquare square rayOrigin angle
         in
-     --     show (mapSquareAt gameState squareCoords) ++ show rayOrigin ++ show square ++ show angle ++ " res: " ++ show squareCastResult ++ "   " ++ castRay gameState (fst squareCastResult) (addCouples square (snd squareCastResult)) rayDirection (maxIterations - 1)
---          show square ++ show (pointPointDistance rayOrigin (fst squareCastResult)) ++ "   " ++ castRay gameState (fst squareCastResult) (addCouples square (snd squareCastResult)) angle (maxIterations - 1)
           let
             recursionResult = castRay gameState (fst squareCastResult) (addCouples square (snd squareCastResult)) angle (maxIterations - 1)
           in
@@ -187,9 +154,27 @@ castRay gameState rayOrigin square rayDirection maxIterations =
                   case (snd squareCastResult) of
                     (1,0)  -> normalEast
                     (0,1)  -> normalSouth
-                    (-1,0) -> normalNorth
-                    _      -> normalWest
+                    (-1,0) -> normalWest
+                    _      -> normalNorth
             )
+
+-----------------------------------------------   Casts a ray inside a single square.
+
+castRaySquare :: (Int, Int) -> (Float, Float) -> Float -> ((Float, Float),(Int, Int)) -- result = (intersection,next square offset)
+castRaySquare squareCoords rayPosition rayAngle =
+  let
+    angle = 2 * pi - rayAngle
+  in
+    let
+      boundX = (fst squareCoords) + if angle < (pi / 2) || angle > (pi + pi / 2) then 1 else 0
+      boundY = (snd squareCoords) + if angle < pi then 1 else 0
+    in
+      let intersection1 = lineLineIntersection rayPosition angle (fromIntegral boundX,fromIntegral (snd squareCoords)) (pi / 2)
+          intersection2 = lineLineIntersection rayPosition angle (fromIntegral (fst squareCoords),fromIntegral boundY) 0
+      in
+        if (pointPointDistance rayPosition intersection1) <= (pointPointDistance rayPosition intersection2)
+          then (intersection1,(if boundX == (fst squareCoords) then -1 else 1,0))
+          else (intersection2,(0,if boundY == (snd squareCoords) then -1 else 1))
 
 -----------------------------------------------   Gets distance of two points.
 
@@ -224,24 +209,6 @@ lineLineIntersection position1 angle1 position2 angle2 =
   in
     let x = (p2y - tan2 * p2x - p1y + tan1 * p1x) / denominator
     in (x,if abs tan1 < abs tan2 then tan1 * x + (p1y - tan1 * p1x) else tan2 * x + (p2y - tan2 * p2x))
-
------------------------------------------------   Casts a ray inside a single square.
-
-castRaySquare :: (Int, Int) -> (Float, Float) -> Float -> ((Float, Float),(Int, Int)) -- result = (intersection,next square offset)
-castRaySquare squareCoords rayPosition rayAngle =
-  let
-    angle = 2 * pi - rayAngle
-  in
-    let
-      boundX = (fst squareCoords) + if angle < (pi / 2) || angle > (pi + pi / 2) then 1 else 0
-      boundY = (snd squareCoords) + if angle < pi then 1 else 0
-    in
-      let intersection1 = lineLineIntersection rayPosition angle (fromIntegral boundX,fromIntegral (snd squareCoords)) (pi / 2)
-          intersection2 = lineLineIntersection rayPosition angle (fromIntegral (fst squareCoords),fromIntegral boundY) 0
-      in
-        if (pointPointDistance rayPosition intersection1) <= (pointPointDistance rayPosition intersection2)
-          then (intersection1,(if boundX == (fst squareCoords) then -1 else 1,0))
-          else (intersection2,(0,if boundY == (snd squareCoords) then -1 else 1))
 
 -----------------------------------------------   Renders the game state into string, simple version.
 
