@@ -10,7 +10,7 @@ inputTimeout = 50000
 stepLength = 0.1
 rotationStep = 0.06
 mapSize = (15,15)
-screenSize = (175,55)
+screenSize = (150,35)
 fieldOfView = pi / 1.5
 focalLength = 0.5
 maxRaycastIterations = 20
@@ -62,8 +62,6 @@ initialGameState = GameState
   }
 
 grayscaleMap = [                    -- characters sorted by brigtness
- -- '#','$','@','B','%','8','&','W','M','0','Q','*','o','a','h','k','b','d','p','q','w','m','Z','O','I','L','C','J','U','Y','X','z','c','v','u','n',
- -- 'x','r','j','f','t','\\','|','(',')','1','{','}','[',']','?','-','_','+','~','>','i','!','l',';',':',',','\'','\"','^','`','\'','.']
     'M','$','o','?','/','!',';',':','\'','.','-']
 
 fst3 (x, _, _) = x
@@ -73,18 +71,15 @@ thd3 (_, _, x) = x
 -----------------------------------------------   Ensures given values is in given interval by clamping it.
 
 clamp :: (Ord a) => a -> a -> a -> a
-clamp value minimum maximum =
-  if value < minimum
-    then minimum
-    else if value > maximum
-      then maximum
-      else value
+clamp value minimum maximum
+  | value < minimum = minimum
+  | value > maximum = maximum
+  | otherwise       = value
 
 -----------------------------------------------   Adds two 2-item couples tuples, itemwise.
 
 addCouples :: (Num a) => (Num b) => (a, b) -> (a, b) -> (a, b)
-addCouples first second =
-  ((fst first) + (fst second),(snd first) + (snd second))
+addCouples (x1, y1) (x2, y2) = (x1 + x2, y1 + y2)
 
 -----------------------------------------------   Applies floor function to both items of a 2 item tuple.
 
@@ -143,10 +138,10 @@ render3Dview drawInfo height =
                 in
                   if distanceFromMiddle < columnHeight
                     then
-                      if (snd item) == normalNorth then      intensityToChar $ 0   + distanceToIntensity (fst item)
-                      else if (snd item) == normalEast then  intensityToChar $ 0.3 + distanceToIntensity (fst item)
-                      else if (snd item) == normalSouth then intensityToChar $ 0.6 + distanceToIntensity (fst item)
-                      else                                   intensityToChar $ 0.9 + distanceToIntensity (fst item)
+                      if (snd item) == normalNorth then      intensityToChar $ 0.25 + distanceToIntensity (fst item)
+                      else if (snd item) == normalEast then  intensityToChar $ 0.50 + distanceToIntensity (fst item)
+                      else if (snd item) == normalSouth then intensityToChar $ 0.75 + distanceToIntensity (fst item)
+                      else                                   intensityToChar $ 1.00 + distanceToIntensity (fst item)
                   else ' ' --intensityToChar ( 5 *  (fromIntegral distanceFromMiddle) / heightFrac )
             ) drawInfo ++ "\n"
            
@@ -318,13 +313,13 @@ mapSquareAt gameState coords =
 positionIsWalkable gameState position =
   (mapSquareAt gameState (floorCouple position)) == squareEmpty
 
------------------------------------------------   Moves the player forward by given distance, with collisions.
+-----------------------------------------------   Moves player by given distance in given direction, with collisions.
 
-movePlayer :: GameState -> Float -> GameState
-movePlayer previousGameState distance =
+movePlayerInDirection :: GameState -> Float -> Float -> GameState
+movePlayerInDirection previousGameState angle distance =
   let
-    plusX = cos (playerRot previousGameState) * distance
-    plusY = -1 * (sin (playerRot previousGameState) * distance)
+    plusX = cos angle * distance
+    plusY = -1 * (sin angle * distance)
   in
     previousGameState
       {
@@ -340,17 +335,31 @@ movePlayer previousGameState distance =
               then plusY
               else 0
           )
-      }
+      }    
+
+-----------------------------------------------   Moves the player forward by given distance, with collisions.
+
+movePlayerForward :: GameState -> Float -> GameState
+movePlayerForward previousGameState distance =
+  movePlayerInDirection previousGameState (playerRot previousGameState) distance
+
+-----------------------------------------------   Strafes the player left by given distance (with collisions).
+
+strafePlayer :: GameState -> Float -> GameState
+strafePlayer previousGameState distance =
+  movePlayerInDirection previousGameState (angleTo02Pi ((playerRot previousGameState) + pi / 2)) distance
 
 -----------------------------------------------   Computes the next game state.
 
 nextGameState :: GameState -> Char -> GameState
 nextGameState previousGameState inputChar =
   case inputChar of
-    'w' -> movePlayer previousGameState stepLength
-    's' -> movePlayer previousGameState (-1 * stepLength)
+    'w' -> movePlayerForward previousGameState stepLength
+    's' -> movePlayerForward previousGameState (-1 * stepLength)
     'a' -> previousGameState { playerRot = angleTo02Pi ((playerRot previousGameState) + rotationStep) }
     'd' -> previousGameState { playerRot = angleTo02Pi ((playerRot previousGameState) - rotationStep) }
+    'q' -> strafePlayer previousGameState stepLength
+    'e' -> strafePlayer previousGameState (-1 * stepLength)
     _   -> previousGameState
 
 -----------------------------------------------   Main game loop.
@@ -368,7 +377,7 @@ loop gameState =
       Nothing -> do loop gameState
 
       -- quit on 'q'
-      Just 'q' -> do putStrLn "quitting"                     
+      Just 'x' -> do putStrLn "quitting"                     
 
       -- input was given
       Just input -> do loop (nextGameState gameState input)
@@ -379,4 +388,5 @@ main =
   do
     hSetBuffering stdin NoBuffering                     -- to read char without [enter]
     hSetBuffering stdout (BlockBuffering (Just 20000))  -- to read flickering
+    hSetEcho stdout False                               
     loop initialGameState
