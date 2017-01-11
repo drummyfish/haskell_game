@@ -7,11 +7,12 @@ import Debug.Trace
 import Control.Concurrent
 
 inputTimeout = 50000
-stepLength = 0.05
-rotationStep = 0.05
+stepLength = 0.1
+rotationStep = 0.06
 mapSize = (15,15)
-screenSize = (150,55)
-fieldOfView = pi / 2
+screenSize = (175,55)
+fieldOfView = pi / 1.5
+focalLength = 0.5
 maxRaycastIterations = 20
 
 totalMapSquares = (fst mapSize) * (snd mapSize)
@@ -29,15 +30,15 @@ normalWest = 3
 
 gameMap1 = 
   [
-    0,0,0,0,0,0,1,1,1,0,0,0,0,0,0,
+    0,0,0,0,0,0,0,0,0,0,0,1,1,0,0,
     0,0,0,1,0,0,1,0,0,0,0,0,0,0,0,
     0,0,0,1,0,0,1,0,0,0,0,0,0,0,0,
     0,0,0,1,0,0,1,0,0,0,0,0,0,0,0,
-    0,0,0,1,0,0,1,0,0,0,0,0,1,0,0,
+    0,0,0,1,0,0,1,0,0,0,0,0,1,0,1,
     0,0,0,1,1,1,1,0,0,0,0,0,0,0,0,
     0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,
     0,0,0,1,1,1,1,1,1,1,0,0,0,0,0,
-    0,0,0,0,0,0,0,0,1,1,0,0,0,0,0,
+    0,0,0,0,0,0,0,0,1,1,0,0,0,1,0,
     0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,
     0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,
     0,0,0,0,0,0,0,0,0,0,0,0,0,1,1,
@@ -61,8 +62,9 @@ initialGameState = GameState
   }
 
 grayscaleMap = [                    -- characters sorted by brigtness
-  '#','$','@','B','%','8','&','W','M','0','Q','*','o','a','h','k','b','d','p','q','w','m','Z','O','I','L','C','J','U','Y','X','z','c','v','u','n',
-  'x','r','j','f','t','\\','|','(',')','1','{','}','[',']','?','-','_','+','~','>','i','!','l',';',':',',','\'','\"','^','`','\'','.']
+ -- '#','$','@','B','%','8','&','W','M','0','Q','*','o','a','h','k','b','d','p','q','w','m','Z','O','I','L','C','J','U','Y','X','z','c','v','u','n',
+ -- 'x','r','j','f','t','\\','|','(',')','1','{','}','[',']','?','-','_','+','~','>','i','!','l',';',':',',','\'','\"','^','`','\'','.']
+    'M','$','o','?','/','!',';',':','\'','.','-']
 
 fst3 (x, _, _) = x
 snd3 (_, x, _) = x
@@ -118,7 +120,7 @@ intensityToChar intensity =
 
 distanceToIntensity :: Float -> Float
 distanceToIntensity distance =
-  (min (distance / 7.0) 1.0) * (-0.2)
+  (min (distance / 7.0) 1.0) * (-0.3)
 
 -----------------------------------------------   Renders the 3D player view into String.
 
@@ -126,7 +128,7 @@ render3Dview :: [(Float, Normal)] -> Int -> String
 render3Dview drawInfo height =
   let
     middle = div height 2 + 1
-    heightFrac = (fromIntegral height) / 3
+    heightFloat = (fromIntegral height)
   in
     concat
       [
@@ -135,14 +137,17 @@ render3Dview drawInfo height =
         in
           map
             (
-              \item -> 
-                if distanceFromMiddle < floor ( (2.0 / ((fst item) + 2.0)) * heightFrac )
-                  then
-                    if (snd item) == normalNorth then      intensityToChar $ 0   + distanceToIntensity (fst item)
-                    else if (snd item) == normalEast then  intensityToChar $ 0.3 + distanceToIntensity (fst item)
-                    else if (snd item) == normalSouth then intensityToChar $ 0.6 + distanceToIntensity (fst item)
-                    else                                   intensityToChar $ 0.9 + distanceToIntensity (fst item)
-                else ' ' --intensityToChar ( 5 *  (fromIntegral distanceFromMiddle) / heightFrac )
+              \item ->
+                let
+                  columnHeight = floor ((1.0 / ((fst item) + 1.0)) * heightFloat)
+                in
+                  if distanceFromMiddle < columnHeight
+                    then
+                      if (snd item) == normalNorth then      intensityToChar $ 0   + distanceToIntensity (fst item)
+                      else if (snd item) == normalEast then  intensityToChar $ 0.3 + distanceToIntensity (fst item)
+                      else if (snd item) == normalSouth then intensityToChar $ 0.6 + distanceToIntensity (fst item)
+                      else                                   intensityToChar $ 0.9 + distanceToIntensity (fst item)
+                  else ' ' --intensityToChar ( 5 *  (fromIntegral distanceFromMiddle) / heightFrac )
             ) drawInfo ++ "\n"
            
         | i <- [1..height]
@@ -161,12 +166,29 @@ renderGameState3D gameState =
   --  ++
     render3Dview drawInfo (snd screenSize)
 
+-----------------------------------------------   Gets the distance from projection origin to projection plane.
+
+distanceToProjectionPlane :: Float -> Float -> Float
+distanceToProjectionPlane focalDistance angleFromCenter =
+  focalDistance * (tan angleFromCenter)
+
 -----------------------------------------------   Casts all rays needed to render player's view, returns a list of ray cast results.
 
 castRays :: GameState -> [(Float, Normal)]
 castRays gameState =
   [
-    castRay gameState (playerPos gameState) (floorCouple (playerPos gameState)) ((playerRot gameState) + fieldOfView / 2 - x * rayAngleStep) maxRaycastIterations
+    let
+      rayDirection = ((playerRot gameState) + fieldOfView / 2 - x * rayAngleStep)
+      rayResult = castRay gameState (playerPos gameState) (floorCouple (playerPos gameState)) rayDirection maxRaycastIterations
+    in
+      (
+        max
+          (
+            (fst rayResult) - (distanceToProjectionPlane focalLength (abs $ (playerRot gameState) - rayDirection))
+          ) 0.0,
+        snd rayResult
+      )
+
     | x <- [0..(fst screenSize) - 1]
   ]
 
@@ -356,5 +378,5 @@ loop gameState =
 main = 
   do
     hSetBuffering stdin NoBuffering                     -- to read char without [enter]
-    hSetBuffering stdout (BlockBuffering (Just 80000))  -- to read flickering
+    hSetBuffering stdout (BlockBuffering (Just 20000))  -- to read flickering
     loop initialGameState
