@@ -9,9 +9,10 @@ import Control.Concurrent
 inputTimeout = 50000
 stepLength = 0.05
 rotationStep = 0.05
-mapSize = (10,10)
+mapSize = (15,15)
 screenSize = (150,55)
-fieldOfView = pi / 2.0
+fieldOfView = pi / 2
+maxRaycastIterations = 20
 
 totalMapSquares = (fst mapSize) * (snd mapSize)
 rayAngleStep = fieldOfView / (fst screenSize)
@@ -20,7 +21,7 @@ type MapSquare = Int
 squareEmpty = 0                     -- map square enums
 squareWall = 1
 
-type Normal = Int
+type Normal = Int                   -- possible wall normals
 normalNorth = 0
 normalEast = 1
 normalSouth = 2
@@ -28,16 +29,21 @@ normalWest = 3
 
 gameMap1 = 
   [
-    0,0,0,0,0,0,1,1,1,0,
-    0,0,0,1,0,0,1,0,0,0,
-    0,0,0,1,0,0,1,0,0,0,
-    0,0,0,1,0,0,1,0,0,0,
-    0,0,0,1,0,0,1,0,0,0,
-    0,0,0,1,1,1,1,0,0,0,
-    0,0,0,0,0,0,0,0,0,0,
-    0,0,0,0,0,0,0,0,1,1,
-    0,0,0,0,0,0,0,0,1,1,
-    0,0,0,0,0,0,0,0,0,0
+    0,0,0,0,0,0,1,1,1,0,0,0,0,0,0,
+    0,0,0,1,0,0,1,0,0,0,0,0,0,0,0,
+    0,0,0,1,0,0,1,0,0,0,0,0,0,0,0,
+    0,0,0,1,0,0,1,0,0,0,0,0,0,0,0,
+    0,0,0,1,0,0,1,0,0,0,0,0,1,0,0,
+    0,0,0,1,1,1,1,0,0,0,0,0,0,0,0,
+    0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,
+    0,0,0,1,1,1,1,1,1,1,0,0,0,0,0,
+    0,0,0,0,0,0,0,0,1,1,0,0,0,0,0,
+    0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,
+    0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,
+    0,0,0,0,0,0,0,0,0,0,0,0,0,1,1,
+    0,0,0,0,0,0,0,0,0,0,0,0,0,1,1,
+    0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,
+    0,0,0,0,0,0,0,0,0,0,0,0,0,0,0
   ]
 
 data GameState = GameState
@@ -54,7 +60,7 @@ initialGameState = GameState
     gameMap = gameMap1
   }
 
-grayscaleMap = [
+grayscaleMap = [                    -- characters sorted by brigtness
   '#','$','@','B','%','8','&','W','M','0','Q','*','o','a','h','k','b','d','p','q','w','m','Z','O','I','L','C','J','U','Y','X','z','c','v','u','n',
   'x','r','j','f','t','\\','|','(',')','1','{','}','[',']','?','-','_','+','~','>','i','!','l',';',':',',','\'','\"','^','`','\'','.']
 
@@ -62,13 +68,23 @@ fst3 (x, _, _) = x
 snd3 (_, x, _) = x
 thd3 (_, _, x) = x
 
------------------------------------------------
+-----------------------------------------------   Ensures given values is in given interval by clamping it.
+
+clamp :: (Ord a) => a -> a -> a -> a
+clamp value minimum maximum =
+  if value < minimum
+    then minimum
+    else if value > maximum
+      then maximum
+      else value
+
+-----------------------------------------------   Adds two 2-item couples tuples, itemwise.
 
 addCouples :: (Num a) => (Num b) => (a, b) -> (a, b) -> (a, b)
 addCouples first second =
   ((fst first) + (fst second),(snd first) + (snd second))
 
------------------------------------------------
+-----------------------------------------------   Applies floor function to both items of a 2 item tuple.
 
 floorCouple :: (RealFrac a) => (RealFrac b) => (a, b) -> (Int, Int)
 floorCouple couple =
@@ -92,61 +108,65 @@ angleTo02Pi :: Float -> Float
 angleTo02Pi angle =
   mod' angle (2 * pi)
 
------------------------------------------------
+-----------------------------------------------   Maps normalized intensity to ASCII character.
 
 intensityToChar :: Float -> Char
 intensityToChar intensity =
-  grayscaleMap !! min (max (floor (intensity * fromIntegral (length grayscaleMap))) 0) ((length grayscaleMap) - 1)
+  grayscaleMap !! (clamp (floor (intensity * fromIntegral (length grayscaleMap))) 0 ((length grayscaleMap) - 1))
 
------------------------------------------------
+-----------------------------------------------   Returns an intensity addition (possibly negative) cause by distance.
 
 distanceToIntensity :: Float -> Float
 distanceToIntensity distance =
-  (min (distance / 7.0) 1.0) * (-0.1)
+  (min (distance / 7.0) 1.0) * (-0.2)
 
------------------------------------------------
+-----------------------------------------------   Renders the 3D player view into String.
 
-draw3Dview :: [(Float, Normal)] -> Int -> String
-draw3Dview drawInfo height =
+render3Dview :: [(Float, Normal)] -> Int -> String
+render3Dview drawInfo height =
   let
     middle = div height 2 + 1
-    heightFrac = (fromIntegral height) / 1.5
+    heightFrac = (fromIntegral height) / 3
   in
-    concat[
-           let
-             distanceFromMiddle = abs (middle - i)
-           in
-             map (
-                  \item -> if distanceFromMiddle < floor ( (2.0 / ((fst item) + 2.0)) * heightFrac )
-                             then
-                               if (snd item) == normalNorth then      intensityToChar $ 0   + distanceToIntensity (fst item)
-                               else if (snd item) == normalEast then  intensityToChar $ 0.3 + distanceToIntensity (fst item)
-                               else if (snd item) == normalSouth then intensityToChar $ 0.6 + distanceToIntensity (fst item)
-                               else                                   intensityToChar $ 0.9 + distanceToIntensity (fst item)
-                             else ' ' --intensityToChar ( 5 *  (fromIntegral distanceFromMiddle) / heightFrac )
-                 ) drawInfo ++ "\n"
+    concat
+      [
+        let
+          distanceFromMiddle = abs (middle - i)
+        in
+          map
+            (
+              \item -> 
+                if distanceFromMiddle < floor ( (2.0 / ((fst item) + 2.0)) * heightFrac )
+                  then
+                    if (snd item) == normalNorth then      intensityToChar $ 0   + distanceToIntensity (fst item)
+                    else if (snd item) == normalEast then  intensityToChar $ 0.3 + distanceToIntensity (fst item)
+                    else if (snd item) == normalSouth then intensityToChar $ 0.6 + distanceToIntensity (fst item)
+                    else                                   intensityToChar $ 0.9 + distanceToIntensity (fst item)
+                else ' ' --intensityToChar ( 5 *  (fromIntegral distanceFromMiddle) / heightFrac )
+            ) drawInfo ++ "\n"
            
-           | i <- [1..height]]
+        | i <- [1..height]
+      ]
 
 -----------------------------------------------   Renders the game in 3D.
 
 renderGameState3D :: GameState -> String
 renderGameState3D gameState =
   let
-    drawInfo = (renderDrawInfo gameState)
+    drawInfo = castRays gameState
   in
   --  (renderGameStateSimple gameState)
   --  ++
   --  "\n"
   --  ++
-    draw3Dview drawInfo (snd screenSize)
+    render3Dview drawInfo (snd screenSize)
 
------------------------------------------------
+-----------------------------------------------   Casts all rays needed to render player's view, returns a list of ray cast results.
 
-renderDrawInfo :: GameState -> [(Float, Normal)]
-renderDrawInfo gameState =
+castRays :: GameState -> [(Float, Normal)]
+castRays gameState =
   [
-    castRay gameState (playerPos gameState) (floorCouple (playerPos gameState)) ((playerRot gameState) + fieldOfView / 2 - x * rayAngleStep) 10
+    castRay gameState (playerPos gameState) (floorCouple (playerPos gameState)) ((playerRot gameState) + fieldOfView / 2 - x * rayAngleStep) maxRaycastIterations
     | x <- [0..(fst screenSize) - 1]
   ]
 
@@ -163,40 +183,34 @@ castRay gameState rayOrigin square rayDirection maxIterations =
       else
         let
           squareCastResult = castRaySquare square rayOrigin angle
+          recursionResult = castRay gameState (fst squareCastResult) (addCouples square (snd squareCastResult)) angle (maxIterations - 1)
         in
-          let
-            recursionResult = castRay gameState (fst squareCastResult) (addCouples square (snd squareCastResult)) angle (maxIterations - 1)
-          in
-            (
-              pointPointDistance rayOrigin (fst squareCastResult) + (fst recursionResult),
-              if (fst recursionResult) /= 0
-                then (snd recursionResult)
-                else
-                  case (snd squareCastResult) of
-                    (1,0)  -> normalEast
-                    (0,1)  -> normalSouth
-                    (-1,0) -> normalWest
-                    _      -> normalNorth
-            )
+          (
+            pointPointDistance rayOrigin (fst squareCastResult) + (fst recursionResult),
+            if (fst recursionResult) /= 0
+              then (snd recursionResult)
+              else
+                case (snd squareCastResult) of
+                  (1,0)  -> normalEast
+                  (0,1)  -> normalSouth
+                  (-1,0) -> normalWest
+                  _      -> normalNorth
+          )
 
------------------------------------------------   Casts a ray inside a single square.
+-----------------------------------------------   Casts a ray inside a single square, returns (intersection point with square bounds,next square offset)
 
-castRaySquare :: (Int, Int) -> (Float, Float) -> Float -> ((Float, Float),(Int, Int)) -- result = (intersection,next square offset)
+castRaySquare :: (Int, Int) -> (Float, Float) -> Float -> ((Float, Float),(Int, Int))
 castRaySquare squareCoords rayPosition rayAngle =
   let
     angle = 2 * pi - rayAngle
+    boundX = (fst squareCoords) + if angle < (pi / 2) || angle > (pi + pi / 2) then 1 else 0
+    boundY = (snd squareCoords) + if angle < pi then 1 else 0
+    intersection1 = lineLineIntersection rayPosition angle (fromIntegral boundX,fromIntegral (snd squareCoords)) (pi / 2)
+    intersection2 = lineLineIntersection rayPosition angle (fromIntegral (fst squareCoords),fromIntegral boundY) 0
   in
-    let
-      boundX = (fst squareCoords) + if angle < (pi / 2) || angle > (pi + pi / 2) then 1 else 0
-      boundY = (snd squareCoords) + if angle < pi then 1 else 0
-    in
-      let
-        intersection1 = lineLineIntersection rayPosition angle (fromIntegral boundX,fromIntegral (snd squareCoords)) (pi / 2)
-        intersection2 = lineLineIntersection rayPosition angle (fromIntegral (fst squareCoords),fromIntegral boundY) 0
-      in
-        if (pointPointDistance rayPosition intersection1) <= (pointPointDistance rayPosition intersection2)
-          then (intersection1,(if boundX == (fst squareCoords) then -1 else 1,0))
-          else (intersection2,(0,if boundY == (snd squareCoords) then -1 else 1))
+    if (pointPointDistance rayPosition intersection1) <= (pointPointDistance rayPosition intersection2)
+      then (intersection1,(if boundX == (fst squareCoords) then -1 else 1,0))
+      else (intersection2,(0,if boundY == (snd squareCoords) then -1 else 1))
 
 -----------------------------------------------   Gets distance of two points.
 
@@ -210,10 +224,10 @@ pointPointDistance point1 point2 =
 
 -----------------------------------------------   Makes the angle safe for tan function.
 
-safeAngle :: Float -> Float
-safeAngle angle =
+tanSafeAngle :: Float -> Float
+tanSafeAngle angle =
   if mod' angle (pi / 2) == 0.0
-    then angle + 0.0001
+    then angle + 0.00001
     else angle
 
 -----------------------------------------------   Computes an intersection point of two lines.
@@ -221,8 +235,8 @@ safeAngle angle =
 lineLineIntersection :: (Float, Float) -> Float -> (Float, Float) -> Float -> (Float, Float)
 lineLineIntersection position1 angle1 position2 angle2 =
   let
-    tan1 = tan (safeAngle angle1)
-    tan2 = tan (safeAngle angle2)
+    tan1 = tan (tanSafeAngle angle1)
+    tan2 = tan (tanSafeAngle angle2)
     p1x  = fst position1
     p1y  = snd position1
     p2x  = fst position2
@@ -241,35 +255,35 @@ renderGameStateSimple gameState =
       map
         (   
           \square ->
-              (
-                if mod (snd square) (fst mapSize) == 0
-                  then "\n"
-                  else ""
-              )
-                ++
-              (
-                if floor (fst (playerPos gameState)) == fst (arrayToMapCoords (snd square)) &&
-                   floor (snd (playerPos gameState)) == snd (arrayToMapCoords (snd square))
-                   then case round (4.0 * (playerRot gameState) / pi)  of
-                     0 -> "->"
-                     1 -> "/^"
-                     2 -> "|^"
-                     3 -> "^\\"
-                     4 -> "<-"
-                     5 -> "./"
-                     6 -> ".|"
-                     7 -> "\\."
-                     8 -> "->"
-                  else if fst square == squareEmpty
-                    then "  "
-                    else "[]"
-              )
+            (
+              if mod (snd square) (fst mapSize) == 0
+                then "\n"
+                else ""
+            )
+            ++
+            (
+              if floor (fst (playerPos gameState)) == fst (arrayToMapCoords (snd square)) &&
+                 floor (snd (playerPos gameState)) == snd (arrayToMapCoords (snd square))
+                then case round (4.0 * (playerRot gameState) / pi)  of
+                  0 -> "->"
+                  1 -> "/^"
+                  2 -> "|^"
+                  3 -> "^\\"
+                  4 -> "<-"
+                  5 -> "./"
+                  6 -> ".|"
+                  7 -> "\\."
+                  8 -> "->"
+                else if fst square == squareEmpty
+                  then "  "
+                  else "[]"
+            )
         ) (zip (gameMap gameState) [0..])
     )
   ++
   "\npos: " ++ (show (playerPos gameState)) ++ "\nrot: " ++ (show (playerRot gameState)) ++ "\n"
 
------------------------------------------------   Returns map square at given corrds.
+-----------------------------------------------   Returns map square at given coords.
 
 mapSquareAt :: GameState -> (Int, Int) -> MapSquare
 mapSquareAt gameState coords =
@@ -277,7 +291,7 @@ mapSquareAt gameState coords =
     then (gameMap gameState) !! (mapToArrayCoords coords)
     else squareWall
 
------------------------------------------------   Checks if given player position is walid (collisions).
+-----------------------------------------------   Checks if given player position is valid (collisions).
 
 positionIsWalkable gameState position =
   (mapSquareAt gameState (floorCouple position)) == squareEmpty
@@ -286,29 +300,30 @@ positionIsWalkable gameState position =
 
 movePlayer :: GameState -> Float -> GameState
 movePlayer previousGameState distance =
-  previousGameState
-    {
-      playerPos =
-        (
-          let plusX = cos (playerRot previousGameState) * distance in
-          fst (playerPos previousGameState) + 
-          if positionIsWalkable previousGameState ((fst (playerPos previousGameState)) + plusX,snd (playerPos previousGameState))
-            then plusX
-            else 0,
+  let
+    plusX = cos (playerRot previousGameState) * distance
+    plusY = -1 * (sin (playerRot previousGameState) * distance)
+  in
+    previousGameState
+      {
+        playerPos =
+          (
+            fst (playerPos previousGameState) + 
+            if positionIsWalkable previousGameState ((fst (playerPos previousGameState)) + plusX,snd (playerPos previousGameState))
+              then plusX
+              else 0,
 
-          let plusY = -1 * (sin (playerRot previousGameState) * distance) in
-          snd (playerPos previousGameState) + 
-          if positionIsWalkable previousGameState (fst (playerPos previousGameState),(snd (playerPos previousGameState)) + plusY)
-            then plusY
-            else 0
-        )
-    }
+            snd (playerPos previousGameState) + 
+            if positionIsWalkable previousGameState (fst (playerPos previousGameState),(snd (playerPos previousGameState)) + plusY)
+              then plusY
+              else 0
+          )
+      }
 
 -----------------------------------------------   Computes the next game state.
 
 nextGameState :: GameState -> Char -> GameState
 nextGameState previousGameState inputChar =
-
   case inputChar of
     'w' -> movePlayer previousGameState stepLength
     's' -> movePlayer previousGameState (-1 * stepLength)
@@ -324,7 +339,7 @@ loop gameState =
     putStrLn (renderGameState3D gameState)
     hFlush stdout
 
-    c <- timeout inputTimeout getChar -- wait for input, with timeout
+    c <- timeout inputTimeout getChar             -- wait for input, with timeout
 
     case c of
       -- no input given
@@ -340,6 +355,6 @@ loop gameState =
         
 main = 
   do
-    hSetBuffering stdin NoBuffering   -- to read char without [enter]
-    hSetBuffering stdout (BlockBuffering (Just 80000))   -- to read char without [enter]
+    hSetBuffering stdin NoBuffering                     -- to read char without [enter]
+    hSetBuffering stdout (BlockBuffering (Just 80000))  -- to read flickering
     loop initialGameState
