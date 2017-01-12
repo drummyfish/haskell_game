@@ -11,7 +11,7 @@ stepLength = 0.1
 rotationStep = 0.06
 mapSize = (15,15)
 screenSize = (150,35)
-fieldOfView = pi / 1.5
+fieldOfView = pi / 2
 focalLength = 0.5
 maxRaycastIterations = 20
 
@@ -165,7 +165,7 @@ renderGameState3D gameState =
 
 distanceToProjectionPlane :: Double -> Double -> Double
 distanceToProjectionPlane focalDistance angleFromCenter =
-  focalDistance * (tan angleFromCenter)
+  focalDistance / (cos angleFromCenter)
 
 -----------------------------------------------   Casts all rays needed to render player's view, returns a list of ray cast results.
 
@@ -299,22 +299,16 @@ renderGameStateSimple gameState =
     )
   ++
   "\npos: " ++ (show (playerPos gameState)) ++ "\nrot: " ++ (show (playerRot gameState)) ++ "\n"
-
 -----------------------------------------------   Returns map square at given coords.
-
 mapSquareAt :: GameState -> (Int, Int) -> MapSquare
 mapSquareAt gameState coords =
    if ((fst coords) < (fst mapSize)) && ((fst coords) >= 0) && ((snd coords) < (snd mapSize)) && ((snd coords) >= 0)
     then (gameMap gameState) !! (mapToArrayCoords coords)
     else squareWall
-
 -----------------------------------------------   Checks if given player position is valid (collisions).
-
 positionIsWalkable gameState position =
   (mapSquareAt gameState (floorCouple position)) == squareEmpty
-
 -----------------------------------------------   Moves player by given distance in given direction, with collisions.
-
 movePlayerInDirection :: GameState -> Double -> Double -> GameState
 movePlayerInDirection previousGameState angle distance =
   let
@@ -329,28 +323,21 @@ movePlayerInDirection previousGameState angle distance =
             if positionIsWalkable previousGameState ((fst (playerPos previousGameState)) + plusX,snd (playerPos previousGameState))
               then plusX
               else 0,
-
             snd (playerPos previousGameState) + 
             if positionIsWalkable previousGameState (fst (playerPos previousGameState),(snd (playerPos previousGameState)) + plusY)
               then plusY
               else 0
           )
       }    
-
 -----------------------------------------------   Moves the player forward by given distance, with collisions.
-
 movePlayerForward :: GameState -> Double -> GameState
 movePlayerForward previousGameState distance =
   movePlayerInDirection previousGameState (playerRot previousGameState) distance
-
 -----------------------------------------------   Strafes the player left by given distance (with collisions).
-
 strafePlayer :: GameState -> Double -> GameState
 strafePlayer previousGameState distance =
   movePlayerInDirection previousGameState (angleTo02Pi ((playerRot previousGameState) + pi / 2)) distance
-
 -----------------------------------------------   Computes the next game state.
-
 nextGameState :: GameState -> Char -> GameState
 nextGameState previousGameState inputChar =
   case inputChar of
@@ -361,27 +348,20 @@ nextGameState previousGameState inputChar =
     'q' -> strafePlayer previousGameState stepLength
     'e' -> strafePlayer previousGameState (-1 * stepLength)
     _   -> previousGameState
-
 -----------------------------------------------   Main game loop.
-
 loop :: GameState -> IO ()
 loop gameState =
   do
     putStrLn (renderGameState3D gameState)
     hFlush stdout
-
     c <- timeout inputTimeout getChar             -- wait for input, with timeout
-
     case c of
       -- no input given
       Nothing -> do loop gameState
-
       -- quit on 'q'
       Just 'x' -> do putStrLn "quitting"                     
-
       -- input was given
       Just input -> do loop (nextGameState gameState input)
-
 -----------------------------------------------
         
 main = 
