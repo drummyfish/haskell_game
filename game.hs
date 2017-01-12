@@ -49,8 +49,8 @@ gameMap1 =
 
 data GameState = GameState
   {
-    playerPos :: (Float,Float),     -- x, y, starting top left (map AND square)
-    playerRot :: Float,             -- rotation in radians, CCW, 0 = facing right
+    playerPos :: (Double,Double),     -- x, y, starting top left (map AND square)
+    playerRot :: Double,             -- rotation in radians, CCW, 0 = facing right
     gameMap :: [Int]
   } deriving (Show)
 
@@ -101,29 +101,29 @@ arrayToMapCoords coords =
 
 -----------------------------------------------
 
-angleTo02Pi :: Float -> Float
+angleTo02Pi :: Double -> Double
 angleTo02Pi angle =
   mod' angle (2 * pi)
 
 -----------------------------------------------   Maps normalized intensity to ASCII character.
 
-intensityToChar :: Float -> Char
+intensityToChar :: Double -> Char
 intensityToChar intensity =
   grayscaleMap !! (clamp (floor (intensity * fromIntegral (length grayscaleMap))) 0 ((length grayscaleMap) - 1))
 
 -----------------------------------------------   Returns an intensity addition (possibly negative) cause by distance.
 
-distanceToIntensity :: Float -> Float
+distanceToIntensity :: Double -> Double
 distanceToIntensity distance =
   (min (distance / 7.0) 1.0) * (-0.3)
 
 -----------------------------------------------   Renders the 3D player view into String.
 
-render3Dview :: [(Float, Normal)] -> Int -> String
+render3Dview :: [(Double, Normal)] -> Int -> String
 render3Dview drawInfo height =
   let
     middle = div height 2 + 1
-    heightFloat = (fromIntegral height)
+    heightDouble = (fromIntegral height)
   in
     concat
       [
@@ -134,7 +134,7 @@ render3Dview drawInfo height =
             (
               \item ->
                 let
-                  columnHeight = floor ((1.0 / ((fst item) + 1.0)) * heightFloat)
+                  columnHeight = floor ((1.0 / ((fst item) + 1.0)) * heightDouble)
                 in
                   if distanceFromMiddle < columnHeight
                     then
@@ -163,13 +163,13 @@ renderGameState3D gameState =
 
 -----------------------------------------------   Gets the distance from projection origin to projection plane.
 
-distanceToProjectionPlane :: Float -> Float -> Float
+distanceToProjectionPlane :: Double -> Double -> Double
 distanceToProjectionPlane focalDistance angleFromCenter =
   focalDistance * (tan angleFromCenter)
 
 -----------------------------------------------   Casts all rays needed to render player's view, returns a list of ray cast results.
 
-castRays :: GameState -> [(Float, Normal)]
+castRays :: GameState -> [(Double, Normal)]
 castRays gameState =
   [
     let
@@ -189,7 +189,7 @@ castRays gameState =
 
 -----------------------------------------------   Casts a ray and returns an information (distance, normal) about a wall it hits.
 
-castRay :: GameState -> (Float, Float) -> (Int, Int) -> Float -> Int ->  (Float, Normal)
+castRay :: GameState -> (Double, Double) -> (Int, Int) -> Double -> Int ->  (Double, Normal)
 castRay gameState rayOrigin square rayDirection maxIterations =
   let
     squareCoords = floorCouple rayOrigin
@@ -216,7 +216,7 @@ castRay gameState rayOrigin square rayDirection maxIterations =
 
 -----------------------------------------------   Casts a ray inside a single square, returns (intersection point with square bounds,next square offset)
 
-castRaySquare :: (Int, Int) -> (Float, Float) -> Float -> ((Float, Float),(Int, Int))
+castRaySquare :: (Int, Int) -> (Double, Double) -> Double -> ((Double, Double),(Int, Int))
 castRaySquare squareCoords rayPosition rayAngle =
   let
     angle = 2 * pi - rayAngle
@@ -231,7 +231,7 @@ castRaySquare squareCoords rayPosition rayAngle =
 
 -----------------------------------------------   Gets distance of two points.
 
-pointPointDistance :: (Float, Float) -> (Float, Float) -> Float
+pointPointDistance :: (Double, Double) -> (Double, Double) -> Double
 pointPointDistance point1 point2 =
   let
     dx = (fst point1) - (fst point2)
@@ -241,7 +241,7 @@ pointPointDistance point1 point2 =
 
 -----------------------------------------------   Makes the angle safe for tan function.
 
-tanSafeAngle :: Float -> Float
+tanSafeAngle :: Double -> Double
 tanSafeAngle angle =
   if mod' angle (pi / 2) == 0.0
     then angle + 0.00001
@@ -249,7 +249,7 @@ tanSafeAngle angle =
 
 -----------------------------------------------   Computes an intersection point of two lines.
 
-lineLineIntersection :: (Float, Float) -> Float -> (Float, Float) -> Float -> (Float, Float)
+lineLineIntersection :: (Double, Double) -> Double -> (Double, Double) -> Double -> (Double, Double)
 lineLineIntersection position1 angle1 position2 angle2 =
   let
     tan1 = tan (tanSafeAngle angle1)
@@ -315,7 +315,7 @@ positionIsWalkable gameState position =
 
 -----------------------------------------------   Moves player by given distance in given direction, with collisions.
 
-movePlayerInDirection :: GameState -> Float -> Float -> GameState
+movePlayerInDirection :: GameState -> Double -> Double -> GameState
 movePlayerInDirection previousGameState angle distance =
   let
     plusX = cos angle * distance
@@ -339,13 +339,13 @@ movePlayerInDirection previousGameState angle distance =
 
 -----------------------------------------------   Moves the player forward by given distance, with collisions.
 
-movePlayerForward :: GameState -> Float -> GameState
+movePlayerForward :: GameState -> Double -> GameState
 movePlayerForward previousGameState distance =
   movePlayerInDirection previousGameState (playerRot previousGameState) distance
 
 -----------------------------------------------   Strafes the player left by given distance (with collisions).
 
-strafePlayer :: GameState -> Float -> GameState
+strafePlayer :: GameState -> Double -> GameState
 strafePlayer previousGameState distance =
   movePlayerInDirection previousGameState (angleTo02Pi ((playerRot previousGameState) + pi / 2)) distance
 
