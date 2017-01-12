@@ -10,10 +10,11 @@ inputTimeout = 50000
 stepLength = 0.1
 rotationStep = 0.06
 mapSize = (15,15)
-screenSize = (150,35)
+screenSize = (90,20)
 fieldOfView = pi / 2
 focalLength = 0.5
 maxRaycastIterations = 20
+spriteSize = (15,10)
 
 totalMapSquares = (fst mapSize) * (snd mapSize)
 rayAngleStep = fieldOfView / (fst screenSize)
@@ -35,10 +36,10 @@ gameMap1 =
     0,0,0,1,0,0,1,0,0,0,0,0,0,0,0,
     0,0,0,1,0,0,1,0,0,0,0,0,0,0,0,
     0,0,0,1,0,0,1,0,0,0,0,0,1,0,1,
-    0,0,0,1,1,1,1,0,0,0,0,0,0,0,0,
     0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,
-    0,0,0,1,1,1,1,1,1,1,0,0,0,0,0,
-    0,0,0,0,0,0,0,0,1,1,0,0,0,1,0,
+    0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,
+    0,0,0,0,0,0,0,1,0,0,0,0,0,0,0,
+    0,0,0,0,0,0,0,0,0,0,0,0,0,1,0,
     0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,
     0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,
     0,0,0,0,0,0,0,0,0,0,0,0,0,1,1,
@@ -47,18 +48,42 @@ gameMap1 =
     0,0,0,0,0,0,0,0,0,0,0,0,0,0,0
   ]
 
+type Sprite = Int
+spriteTree = 0
+
+spriteList =
+  [
+    [
+      "XXXXXXXXXXXXXXX",
+      "XXXX/'''''\\XXXX",
+      "XX/'       ''\\X",
+      "X|   O        |",
+      "X|        O   |",
+      "XX\\_  O      /X",
+      "XXXX\\_  ____/XX",
+      "XXXXXX||XXXXXXX",
+      "XXXXXX||XXXXXXX",
+      "XXXXX/__\\XXXXXX"
+    ]
+  ]
+
 data GameState = GameState
   {
-    playerPos :: (Double,Double),     -- x, y, starting top left (map AND square)
-    playerRot :: Double,             -- rotation in radians, CCW, 0 = facing right
-    gameMap :: [Int]
+    playerPos :: (Double,Double),          -- x, y, starting top left (map AND square)
+    playerRot :: Double,                   -- rotation in radians, CCW, 0 = facing right
+    gameMap :: [Int],
+    sprites :: [((Double,Double),Sprite)]  -- list of sprites with world position
   } deriving (Show)
 
 initialGameState = GameState
   {
     playerPos = (0.5,0.5),
     playerRot = 0.0,
-    gameMap = gameMap1
+    gameMap = gameMap1,
+    sprites =
+      [
+        ((7.5,7.5),spriteTree)
+      ]
   }
 
 grayscaleMap = [                    -- characters sorted by brigtness
@@ -96,6 +121,23 @@ tanSafeAngle angle
 
 -----------------------------------------------
 
+vectorAngle :: (Double,Double) -> Double
+vectorAngle vector =
+  atan2 (-1 * (snd vector)) (fst vector)
+
+-----------------------------------------------   Returns the result of angle1 - angle2 closest to 0.
+
+angleAngleDifference :: Double -> Double -> Double
+angleAngleDifference angle1 angle2 =
+  let
+   difference = angleTo02Pi (angle1 - angle2)
+  in
+   if difference > pi
+     then difference - 2 * pi
+     else difference
+   
+-----------------------------------------------
+
 angleTo02Pi :: Double -> Double
 angleTo02Pi angle =
   mod' angle (2 * pi)
@@ -109,7 +151,7 @@ pointPointDistance point1 point2 =
     dy = (snd point1) - (snd point2)
   in
     sqrt (dx * dx + dy * dy)
-
+     
 -----------------------------------------------   Converts 2D map coords to 1D array coords.
 
 mapToArrayCoords :: (Int, Int) -> Int
@@ -150,10 +192,35 @@ distanceToIntensity :: Double -> Double
 distanceToIntensity distance =
   (min (distance / 7.0) 1.0) * (-0.3)
 
+-----------------------------------------------   Projects sprites to screen space, returns a list representing screen, each
+                                             --   pixel has (sprite id,sprite x pixel,distance), sprite id = -1 => empty.
+
+projectSprites :: GameState -> [(Sprite,Int,Double)]
+projectSprites gameState =
+  let
+    -- project all sprites to screenspace first:
+    screenspaceSprites =
+      [
+        (
+          snd sprite,                                            -- sprite id
+            0.5 +                                                -- sprite center in screenspace, normalized
+            (
+              angleAngleDifference (playerRot gameState) ( vectorAngle ( fst (fst sprite) - fst (playerPos gameState), snd (fst sprite) - snd (playerPos gameState) ) )
+            )
+            / fieldOfView
+            ,
+          pointPointDistance (playerPos gameState) (fst sprite)  -- sprite distance
+        )
+        | sprite <- (sprites gameState)
+      ]
+  in
+    -- now project "draw" to actual screen:
+    trace (show screenspaceSprites) [(0,0,0)] --[(10,1,2) | i <- [0..(fst screenSize) - 1]]
+
 -----------------------------------------------   Renders the 3D player view into String.
 
-render3Dview :: [(Double, Normal)] -> Int -> String
-render3Dview drawInfo height =
+render3Dview :: [(Double, Normal)] -> [(Sprite,Int,Double)] -> Int -> String
+render3Dview wallMap spriteMap height =
   let
     middle = div height 2 + 1
     heightDouble = (fromIntegral height)
@@ -176,10 +243,10 @@ render3Dview drawInfo height =
                       else if (snd item) == normalSouth then intensityToChar $ 0.75 + distanceToIntensity (fst item)
                       else                                   intensityToChar $ 1.00 + distanceToIntensity (fst item)
                   else ' ' --intensityToChar ( 5 *  (fromIntegral distanceFromMiddle) / heightFrac )
-            ) drawInfo ++ "\n"
+            ) wallMap ++ "\n"
            
         | i <- [1..height]
-      ]
+      ] ++ show spriteMap
 
 -----------------------------------------------   Renders the game in 3D.
 
@@ -192,7 +259,7 @@ renderGameState3D gameState =
   --  ++
   --  "\n"
   --  ++
-    render3Dview drawInfo (snd screenSize)
+    render3Dview drawInfo (projectSprites gameState) (snd screenSize)
 
 -----------------------------------------------   Gets the distance from projection origin to projection plane.
 
