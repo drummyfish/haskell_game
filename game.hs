@@ -64,17 +64,17 @@ initialGameState = GameState
 grayscaleMap = [                    -- characters sorted by brigtness
     'M','$','o','?','/','!',';',':','\'','.','-']
 
+-----------------------------------------------   Functions for 3-item tuples.
+
 fst3 (x, _, _) = x
 snd3 (_, x, _) = x
 thd3 (_, _, x) = x
 
 -----------------------------------------------   Ensures given values is in given interval by clamping it.
 
-clamp :: (Ord a) => a -> a -> a -> a
-clamp value minimum maximum
-  | value < minimum = minimum
-  | value > maximum = maximum
-  | otherwise       = value
+clamp :: (Ord a) => a -> (a, a) -> a
+clamp value (minimum, maximum) =
+  (min maximum . max minimum) value
 
 -----------------------------------------------   Adds two 2-item couples tuples, itemwise.
 
@@ -86,6 +86,29 @@ addCouples (x1, y1) (x2, y2) = (x1 + x2, y1 + y2)
 floorCouple :: (RealFrac a) => (RealFrac b) => (a, b) -> (Int, Int)
 floorCouple couple =
   (floor (fst couple),floor (snd couple))
+
+-----------------------------------------------   Makes the angle safe for tan function.
+
+tanSafeAngle :: Double -> Double
+tanSafeAngle angle
+  | mod' angle (pi / 2) == 0.0 = angle + 0.00001
+  | otherwise                  = angle
+
+-----------------------------------------------
+
+angleTo02Pi :: Double -> Double
+angleTo02Pi angle =
+  mod' angle (2 * pi)
+
+-----------------------------------------------   Gets distance of two points.
+
+pointPointDistance :: (Double, Double) -> (Double, Double) -> Double
+pointPointDistance point1 point2 =
+  let
+    dx = (fst point1) - (fst point2)
+    dy = (snd point1) - (snd point2)
+  in
+    sqrt (dx * dx + dy * dy)
 
 -----------------------------------------------   Converts 2D map coords to 1D array coords.
 
@@ -99,17 +122,27 @@ arrayToMapCoords :: Int -> (Int, Int)
 arrayToMapCoords coords =
   (mod coords (fst mapSize),div coords (fst mapSize))
 
------------------------------------------------
+-----------------------------------------------   Computes an intersection point of two lines.
 
-angleTo02Pi :: Double -> Double
-angleTo02Pi angle =
-  mod' angle (2 * pi)
+lineLineIntersection :: (Double, Double) -> Double -> (Double, Double) -> Double -> (Double, Double)
+lineLineIntersection position1 angle1 position2 angle2 =
+  let
+    tan1 = tan (tanSafeAngle angle1)
+    tan2 = tan (tanSafeAngle angle2)
+    p1x  = fst position1
+    p1y  = snd position1
+    p2x  = fst position2
+    p2y  = snd position2
+    denominator = tan1 - tan2
+  in
+    let x = (p2y - tan2 * p2x - p1y + tan1 * p1x) / denominator
+    in (x,if abs tan1 < abs tan2 then tan1 * x + (p1y - tan1 * p1x) else tan2 * x + (p2y - tan2 * p2x))
 
 -----------------------------------------------   Maps normalized intensity to ASCII character.
 
 intensityToChar :: Double -> Char
 intensityToChar intensity =
-  grayscaleMap !! (clamp (floor (intensity * fromIntegral (length grayscaleMap))) 0 ((length grayscaleMap) - 1))
+  grayscaleMap !! (clamp (floor (intensity * fromIntegral (length grayscaleMap))) (0,((length grayscaleMap) - 1)))
 
 -----------------------------------------------   Returns an intensity addition (possibly negative) cause by distance.
 
@@ -165,7 +198,7 @@ renderGameState3D gameState =
 
 distanceToProjectionPlane :: Double -> Double -> Double
 distanceToProjectionPlane focalDistance angleFromCenter =
-  focalDistance / (cos angleFromCenter)
+  focalDistance * (cos angleFromCenter)
 
 -----------------------------------------------   Casts all rays needed to render player's view, returns a list of ray cast results.
 
@@ -229,40 +262,6 @@ castRaySquare squareCoords rayPosition rayAngle =
       then (intersection1,(if boundX == (fst squareCoords) then -1 else 1,0))
       else (intersection2,(0,if boundY == (snd squareCoords) then -1 else 1))
 
------------------------------------------------   Gets distance of two points.
-
-pointPointDistance :: (Double, Double) -> (Double, Double) -> Double
-pointPointDistance point1 point2 =
-  let
-    dx = (fst point1) - (fst point2)
-    dy = (snd point1) - (snd point2)
-  in
-    sqrt (dx * dx + dy * dy)
-
------------------------------------------------   Makes the angle safe for tan function.
-
-tanSafeAngle :: Double -> Double
-tanSafeAngle angle =
-  if mod' angle (pi / 2) == 0.0
-    then angle + 0.00001
-    else angle
-
------------------------------------------------   Computes an intersection point of two lines.
-
-lineLineIntersection :: (Double, Double) -> Double -> (Double, Double) -> Double -> (Double, Double)
-lineLineIntersection position1 angle1 position2 angle2 =
-  let
-    tan1 = tan (tanSafeAngle angle1)
-    tan2 = tan (tanSafeAngle angle2)
-    p1x  = fst position1
-    p1y  = snd position1
-    p2x  = fst position2
-    p2y  = snd position2
-    denominator = tan1 - tan2
-  in
-    let x = (p2y - tan2 * p2x - p1y + tan1 * p1x) / denominator
-    in (x,if abs tan1 < abs tan2 then tan1 * x + (p1y - tan1 * p1x) else tan2 * x + (p2y - tan2 * p2x))
-
 -----------------------------------------------   Renders the game state into string, simple version.
 
 renderGameStateSimple :: GameState -> String
@@ -281,16 +280,17 @@ renderGameStateSimple gameState =
             (
               if floor (fst (playerPos gameState)) == fst (arrayToMapCoords (snd square)) &&
                  floor (snd (playerPos gameState)) == snd (arrayToMapCoords (snd square))
-                then case round (4.0 * (playerRot gameState) / pi)  of
-                  0 -> "->"
-                  1 -> "/^"
-                  2 -> "|^"
-                  3 -> "^\\"
-                  4 -> "<-"
-                  5 -> "./"
-                  6 -> ".|"
-                  7 -> "\\."
-                  8 -> "->"
+                then
+                  case round (4.0 * (playerRot gameState) / pi)  of
+                    0 -> "->"
+                    1 -> "/^"
+                    2 -> "|^"
+                    3 -> "^\\"
+                    4 -> "<-"
+                    5 -> "./"
+                    6 -> ".|"
+                    7 -> "\\."
+                    8 -> "->"
                 else if fst square == squareEmpty
                   then "  "
                   else "[]"
@@ -299,16 +299,21 @@ renderGameStateSimple gameState =
     )
   ++
   "\npos: " ++ (show (playerPos gameState)) ++ "\nrot: " ++ (show (playerRot gameState)) ++ "\n"
+
 -----------------------------------------------   Returns map square at given coords.
+
 mapSquareAt :: GameState -> (Int, Int) -> MapSquare
-mapSquareAt gameState coords =
-   if ((fst coords) < (fst mapSize)) && ((fst coords) >= 0) && ((snd coords) < (snd mapSize)) && ((snd coords) >= 0)
-    then (gameMap gameState) !! (mapToArrayCoords coords)
-    else squareWall
+mapSquareAt gameState coords 
+  | (fst coords) < (fst mapSize) && (fst coords) >= 0 && (snd coords) < (snd mapSize) && (snd coords) >= 0 = (gameMap gameState) !! (mapToArrayCoords coords)
+  | otherwise = squareWall
+
 -----------------------------------------------   Checks if given player position is valid (collisions).
+
 positionIsWalkable gameState position =
   (mapSquareAt gameState (floorCouple position)) == squareEmpty
+
 -----------------------------------------------   Moves player by given distance in given direction, with collisions.
+
 movePlayerInDirection :: GameState -> Double -> Double -> GameState
 movePlayerInDirection previousGameState angle distance =
   let
@@ -329,15 +334,21 @@ movePlayerInDirection previousGameState angle distance =
               else 0
           )
       }    
+
 -----------------------------------------------   Moves the player forward by given distance, with collisions.
+
 movePlayerForward :: GameState -> Double -> GameState
 movePlayerForward previousGameState distance =
   movePlayerInDirection previousGameState (playerRot previousGameState) distance
+
 -----------------------------------------------   Strafes the player left by given distance (with collisions).
+
 strafePlayer :: GameState -> Double -> GameState
 strafePlayer previousGameState distance =
   movePlayerInDirection previousGameState (angleTo02Pi ((playerRot previousGameState) + pi / 2)) distance
+
 -----------------------------------------------   Computes the next game state.
+
 nextGameState :: GameState -> Char -> GameState
 nextGameState previousGameState inputChar =
   case inputChar of
@@ -348,20 +359,23 @@ nextGameState previousGameState inputChar =
     'q' -> strafePlayer previousGameState stepLength
     'e' -> strafePlayer previousGameState (-1 * stepLength)
     _   -> previousGameState
+
 -----------------------------------------------   Main game loop.
-loop :: GameState -> IO ()
-loop gameState =
+
+gameLoop :: GameState -> IO ()
+gameLoop gameState =
   do
     putStrLn (renderGameState3D gameState)
     hFlush stdout
     c <- timeout inputTimeout getChar             -- wait for input, with timeout
     case c of
       -- no input given
-      Nothing -> do loop gameState
+      Nothing -> do gameLoop gameState
       -- quit on 'q'
       Just 'x' -> do putStrLn "quitting"                     
       -- input was given
-      Just input -> do loop (nextGameState gameState input)
+      Just input -> do gameLoop (nextGameState gameState input)
+
 -----------------------------------------------
         
 main = 
@@ -369,4 +383,4 @@ main =
     hSetBuffering stdin NoBuffering                     -- to read char without [enter]
     hSetBuffering stdout (BlockBuffering (Just 20000))  -- to read flickering
     hSetEcho stdout False                               
-    loop initialGameState
+    gameLoop initialGameState
