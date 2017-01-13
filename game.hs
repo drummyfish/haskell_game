@@ -40,6 +40,8 @@ totalMapSquares = (fst mapSize) * (snd mapSize)
 rayAngleStep :: Double
 rayAngleStep = fieldOfView / fromIntegral (fst screenSize)
 
+backgroundChar = ' '
+
 type MapSquare = Int
 squareEmpty = 0                     -- map square enums
 squareWall = 1
@@ -59,7 +61,7 @@ gameMap1 =
     0,0,0,1,0,0,1,0,0,0,0,0,1,0,1,
     0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,
     0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,
-    0,0,0,0,0,0,0,1,0,0,0,0,0,0,0,
+    0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,
     0,0,0,0,0,0,0,0,0,0,0,0,0,1,0,
     0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,
     0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,
@@ -271,7 +273,7 @@ projectSprites gameState =
   in
     -- now project "draw" to actual screen:
 
-    trace2
+    --trace2
       (
         foldl
           (
@@ -290,8 +292,8 @@ projectSprites gameState =
           
           [projectOneSprite spriteItem emptyScreenlList | spriteItem <- screenspaceSprites]
       )
-      
-      (\what -> (map (\item -> if fst3 item /= -1 then (chr $ 48 + (fst3 item))  else '.') what))
+      --show
+      --(\what -> (map (\item -> if fst3 item /= -1 then (chr $ 48 + (fst3 item))  else '.') what))
 
 -----------------------------------------------   Renders the 3D player view into String.
 
@@ -309,20 +311,30 @@ render3Dview wallMap spriteMap height =
           map
             (
               \item ->
-                let
-                  columnHeight = floor ((distanceToSize (fst item)) * heightDouble)
+                let                  
+                  normal = (snd (fst item))
+                  distance = (fst (fst item))
+                  columnHeight = floor ((distanceToSize distance) * heightDouble)
+                  spriteInfo = (snd item)
                 in
-                  if distanceFromMiddle < columnHeight
-                    then
-                      if (snd item) == normalNorth then      intensityToChar $ 0.25 + distanceToIntensity (fst item)
-                      else if (snd item) == normalEast then  intensityToChar $ 0.50 + distanceToIntensity (fst item)
-                      else if (snd item) == normalSouth then intensityToChar $ 0.75 + distanceToIntensity (fst item)
-                      else                                   intensityToChar $ 1.00 + distanceToIntensity (fst item)
-                  else ' ' --intensityToChar ( 5 *  (fromIntegral distanceFromMiddle) / heightFrac )
-            ) wallMap ++ "\n"
-           
+                  if (thd3 spriteInfo) >= distance      -- is wall closer than sprite?
+                    -- draw wall here
+                    then if distanceFromMiddle < columnHeight
+                      then
+                        if normal == normalNorth then      intensityToChar $ 0.25 + distanceToIntensity distance
+                        else if normal == normalEast then  intensityToChar $ 0.50 + distanceToIntensity distance
+                        else if normal == normalSouth then intensityToChar $ 0.75 + distanceToIntensity distance
+                        else                               intensityToChar $ 1.00 + distanceToIntensity distance
+                    else backgroundChar
+                  else
+                    -- draw sprite here
+                    if distanceFromMiddle < floor ( distanceToSize (thd3 spriteInfo) * fromIntegral (snd spritesSize) )
+                      then '#'
+                      else backgroundChar
+                    
+            ) (zip wallMap spriteMap) ++ "\n"
         | i <- [1..height]
-      ] ++ show spriteMap
+      ]
 
 -----------------------------------------------   Renders the game in 3D.
 
