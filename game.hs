@@ -3,6 +3,7 @@
 import System.IO
 import System.Timeout
 import Data.Fixed
+import Data.Char
 import Debug.Trace
 import Control.Concurrent
 
@@ -30,8 +31,8 @@ focalLength = 0.5
 maxRaycastIterations :: Int
 maxRaycastIterations = 20
 
-spriteSize :: (Int,Int)
-spriteSize = (15,10)
+spritesSize :: (Int,Int)      -- name "spriteSize" causes a weird error for some reason!
+spritesSize = (15,10)
 
 totalMapSquares :: Int
 totalMapSquares = (fst mapSize) * (snd mapSize)
@@ -70,6 +71,7 @@ gameMap1 =
 
 type Sprite = Int
 spriteTree = 0
+spriteGrass = 1
 
 spriteList =
   [
@@ -102,7 +104,8 @@ initialGameState = GameState
     gameMap = gameMap1,
     sprites =
       [
-        ((7.5,7.5),spriteTree)
+        ((7.5,7.5),spriteTree),
+        ((6.5,7.5),spriteGrass)
       ]
   }
 
@@ -245,28 +248,50 @@ projectSprites gameState =
         | sprite <- (sprites gameState)
       ]
       
+    projectOneSprite :: (Sprite,Double,Double) -> [(Sprite,Int,Double)] -> [(Sprite,Int,Double)]
     projectOneSprite =                  -- projects a single sprite to screen list
       (
         \spriteInfo screenList ->
           let
-            spritePos = floor ( (snd3 spriteInfo) * fromIntegral ((length screenList) - 1) )
-            spriteSize = 0
+            spritePos = (snd3 spriteInfo) * fromIntegral ((length screenList) - 1)
+            spriteSize = (distanceToSize (thd3 spriteInfo)) * fromIntegral (fst spritesSize)
+            spriteInterval = ( floor (spritePos - spriteSize / 2) , floor (spritePos + spriteSize / 2)     )
           in
             map
               (
                 \item ->
-                  if (snd item) == spritePos
-                    then (0,0,0)
+                  if (snd item) >= (fst spriteInterval) && (snd item) <= (snd spriteInterval)
+                    then ((fst3 spriteInfo),floor spriteSize,(thd3 spriteInfo))
                     else (fst item)
               )
               (zip screenList [0..])
       )
+      
+    emptyScreenlList = [(-1,0,1000.0) | i <- [0..(fst screenSize) - 1]]
   in
     -- now project "draw" to actual screen:
 
-    trace2 
-      ( projectOneSprite (screenspaceSprites !! 0) [(-1,0,1000.0) | i <- [0..(fst screenSize) - 1]] )
-      (\what -> (map (\item -> if fst3 item == -1 then 'x' else '.') what))
+    trace2
+      (
+        foldl
+          (
+            \screenList1 screenList2 ->
+              map
+                (
+                  \itemPair ->                  -- compare depths
+                    if (thd3 (fst itemPair)) <= (thd3 (snd itemPair))
+                      then (fst itemPair)
+                      else (snd itemPair)
+                )
+                (zip screenList1 screenList2)
+          )
+          
+          emptyScreenlList
+          
+          [projectOneSprite spriteItem emptyScreenlList | spriteItem <- screenspaceSprites]
+      )
+      
+      (\what -> (map (\item -> if fst3 item /= -1 then (chr $ 48 + (fst3 item))  else '.') what))
 
 -----------------------------------------------   Renders the 3D player view into String.
 
