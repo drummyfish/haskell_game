@@ -20,7 +20,7 @@ mapSize :: (Int,Int)
 mapSize = (15,15)
 
 screenSize :: (Int,Int)
-screenSize = (90,20)
+screenSize = (150,40)
 
 fieldOfView :: Double
 fieldOfView = pi / 2
@@ -31,8 +31,11 @@ focalLength = 0.5
 maxRaycastIterations :: Int
 maxRaycastIterations = 20
 
-spritesSize :: (Int,Int)      -- name "spriteSize" causes a weird error for some reason!
-spritesSize = (15,10)
+spriteSize :: (Int,Int)
+spriteSize = (15,10)
+
+spriteScale :: Double
+spriteScale = 3
 
 totalMapSquares :: Int
 totalMapSquares = (fst mapSize) * (snd mapSize)
@@ -41,6 +44,7 @@ rayAngleStep :: Double
 rayAngleStep = fieldOfView / fromIntegral (fst screenSize)
 
 backgroundChar = ' '
+transparentChar = 'X'               -- marks transparency in sprites
 
 type MapSquare = Int
 squareEmpty = 0                     -- map square enums
@@ -73,7 +77,6 @@ gameMap1 =
 
 type Sprite = Int
 spriteTree = 0
-spriteGrass = 1
 
 spriteList =
   [
@@ -101,13 +104,13 @@ data GameState = GameState
 
 initialGameState = GameState
   {
-    playerPos = (0.5,0.5),
+    playerPos = (7.5,8.5),
     playerRot = 0.0,
     gameMap = gameMap1,
     sprites =
       [
         ((7.5,7.5),spriteTree),
-        ((6.5,7.5),spriteGrass)
+        ((6.5,7.5),spriteTree)
       ]
   }
 
@@ -250,20 +253,25 @@ projectSprites gameState =
         | sprite <- (sprites gameState)
       ]
       
-    projectOneSprite :: (Sprite,Double,Double) -> [(Sprite,Int,Double)] -> [(Sprite,Int,Double)]
+    projectOneSprite :: (Sprite,Double,Double) -> [(Sprite,Int,Double)] -> [(Sprite,Int,Double)]  -- same format as the function return
     projectOneSprite =                  -- projects a single sprite to screen list
       (
         \spriteInfo screenList ->
           let
             spritePos = (snd3 spriteInfo) * fromIntegral ((length screenList) - 1)
-            spriteSize = (distanceToSize (thd3 spriteInfo)) * fromIntegral (fst spritesSize)
-            spriteInterval = ( floor (spritePos - spriteSize / 2) , floor (spritePos + spriteSize / 2)     )
+            spriteLength = (distanceToSize (thd3 spriteInfo)) * fromIntegral (fst spriteSize) * spriteScale
+            spriteInterval = ( floor (spritePos - spriteLength / 2) , floor (spritePos + spriteLength / 2) )
           in
             map
               (
                 \item ->
                   if (snd item) >= (fst spriteInterval) && (snd item) <= (snd spriteInterval)
-                    then ((fst3 spriteInfo),floor spriteSize,(thd3 spriteInfo))
+                    then
+                      (
+                        (fst3 spriteInfo),
+                        round $ ((fromIntegral ( (snd item) - (fst spriteInterval) )) / spriteLength) * fromIntegral ((fst spriteSize) - 1),
+                        (thd3 spriteInfo)
+                      )
                     else (fst item)
               )
               (zip screenList [0..])
@@ -271,29 +279,31 @@ projectSprites gameState =
       
     emptyScreenlList = [(-1,0,1000.0) | i <- [0..(fst screenSize) - 1]]
   in
-    -- now project "draw" to actual screen:
-
-    --trace2
+    foldl
       (
-        foldl
-          (
-            \screenList1 screenList2 ->
-              map
-                (
-                  \itemPair ->                  -- compare depths
-                    if (thd3 (fst itemPair)) <= (thd3 (snd itemPair))
-                      then (fst itemPair)
-                      else (snd itemPair)
-                )
-                (zip screenList1 screenList2)
-          )
-          
-          emptyScreenlList
-          
-          [projectOneSprite spriteItem emptyScreenlList | spriteItem <- screenspaceSprites]
+        \screenList1 screenList2 ->
+          map
+            (
+              \itemPair ->                  -- compare depths
+                if (thd3 (fst itemPair)) <= (thd3 (snd itemPair))
+                  then (fst itemPair)
+                  else (snd itemPair)
+            )
+            (zip screenList1 screenList2)
       )
-      --show
-      --(\what -> (map (\item -> if fst3 item /= -1 then (chr $ 48 + (fst3 item))  else '.') what))
+          
+      emptyScreenlList
+          
+      [projectOneSprite spriteItem emptyScreenlList | spriteItem <- screenspaceSprites]
+      
+-----------------------------------------------   
+
+sampleSprite :: Sprite -> (Int,Int) -> Char
+sampleSprite spriteId coordinates =
+  let
+    safeCoords = ( clamp (fst coordinates) (0,(fst spriteSize) - 1), clamp (snd coordinates) (0,(snd spriteSize) - 1) )
+  in
+    ((spriteList !! spriteId) !! (snd safeCoords)) !! (fst safeCoords)
 
 -----------------------------------------------   Renders the 3D player view into String.
 
@@ -306,7 +316,8 @@ render3Dview wallMap spriteMap height =
     concat
       [
         let
-          distanceFromMiddle = abs (middle - i)
+          distanceFromMiddle = middle - i
+          absDistanceFromMiddle = abs distanceFromMiddle
         in
           map
             (
@@ -319,7 +330,7 @@ render3Dview wallMap spriteMap height =
                 in
                   if (thd3 spriteInfo) >= distance      -- is wall closer than sprite?
                     -- draw wall here
-                    then if distanceFromMiddle < columnHeight
+                    then if absDistanceFromMiddle < columnHeight
                       then
                         if normal == normalNorth then      intensityToChar $ 0.25 + distanceToIntensity distance
                         else if normal == normalEast then  intensityToChar $ 0.50 + distanceToIntensity distance
@@ -328,9 +339,21 @@ render3Dview wallMap spriteMap height =
                     else backgroundChar
                   else
                     -- draw sprite here
-                    if distanceFromMiddle < floor ( distanceToSize (thd3 spriteInfo) * fromIntegral (snd spritesSize) )
-                      then '#'
-                      else backgroundChar
+                    let
+                      spriteHalfHeight = floor ( spriteScale * distanceToSize (thd3 spriteInfo) * fromIntegral (snd spriteSize) / 2 )
+                      --sampledSpriteTexel = 
+                    in
+                      if absDistanceFromMiddle <= spriteHalfHeight
+                        then
+                          let
+                            sampleX = snd3 spriteInfo
+                            sampleY = round (((1 - (1 + (fromIntegral distanceFromMiddle) / (fromIntegral spriteHalfHeight)) / 2)) * fromIntegral ((snd spriteSize) - 1))
+                            sample = sampleSprite (fst3 spriteInfo) (sampleX,sampleY)
+                          in
+                            if sample /= transparentChar
+                              then sample
+                              else backgroundChar
+                        else backgroundChar
                     
             ) (zip wallMap spriteMap) ++ "\n"
         | i <- [1..height]
