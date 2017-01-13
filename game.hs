@@ -77,6 +77,7 @@ gameMap1 =
 
 type Sprite = Int
 spriteTree = 0
+spriteZombie = 1
 
 spriteList =
   [
@@ -91,6 +92,18 @@ spriteList =
       "XXXXXX||XXXXXXX",
       "XXXXXX||XXXXXXX",
       "XXXXX/__\\XXXXXX"
+    ],
+    [
+      "XXXXXXXXXXXXXXXX",
+      "XXXXXX/`\\XXXXXXX",
+      "XXXXX(o o)XXXXXX",
+      "XXXXX|===|XXXXXX",
+      "XX/''    ''')XXX",
+      "X(==/     \\==)XX",
+      "XXXX(_____)XXXXX",
+      "XXXX|  _  |XXXXX",
+      "XXXX| |X| |XXXXX",
+      "XXX(__]X\\__)XXXX"
     ]
   ]
 
@@ -110,7 +123,7 @@ initialGameState = GameState
     sprites =
       [
         ((7.5,7.5),spriteTree),
-        ((6.5,7.5),spriteTree),
+        ((6.5,7.5),spriteZombie),
         ((7.5,2.5),spriteTree)
       ]
   }
