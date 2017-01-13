@@ -6,18 +6,38 @@ import Data.Fixed
 import Debug.Trace
 import Control.Concurrent
 
+inputTimeout :: Int
 inputTimeout = 50000
+
+stepLength :: Double
 stepLength = 0.1
+
+rotationStep :: Double
 rotationStep = 0.06
+
+mapSize :: (Int,Int)
 mapSize = (15,15)
+
+screenSize :: (Int,Int)
 screenSize = (90,20)
+
+fieldOfView :: Double
 fieldOfView = pi / 2
+
+focalLength :: Double
 focalLength = 0.5
+
+maxRaycastIterations :: Int
 maxRaycastIterations = 20
+
+spriteSize :: (Int,Int)
 spriteSize = (15,10)
 
+totalMapSquares :: Int
 totalMapSquares = (fst mapSize) * (snd mapSize)
-rayAngleStep = fieldOfView / (fst screenSize)
+
+rayAngleStep :: Double
+rayAngleStep = fieldOfView / fromIntegral (fst screenSize)
 
 type MapSquare = Int
 squareEmpty = 0                     -- map square enums
@@ -94,21 +114,27 @@ fst3 (x, _, _) = x
 snd3 (_, x, _) = x
 thd3 (_, _, x) = x
 
+-----------------------------------------------   Alternative version of trace for debugging.
+
+trace2 :: a -> (a -> String) -> a
+trace2 what func =
+  trace (func what) what
+
 -----------------------------------------------   Ensures given values is in given interval by clamping it.
 
 clamp :: (Ord a) => a -> (a, a) -> a
 clamp value (minimum, maximum) =
   (min maximum . max minimum) value
 
------------------------------------------------   Adds two 2-item couples tuples, itemwise.
+-----------------------------------------------   Adds two 2-item pair tuples, itemwise.
 
-addCouples :: (Num a) => (Num b) => (a, b) -> (a, b) -> (a, b)
-addCouples (x1, y1) (x2, y2) = (x1 + x2, y1 + y2)
+addPairs :: (Num a) => (Num b) => (a, b) -> (a, b) -> (a, b)
+addPairs (x1, y1) (x2, y2) = (x1 + x2, y1 + y2)
 
------------------------------------------------   Applies floor function to both items of a 2 item tuple.
+-----------------------------------------------   Applies floor function to both items of a pair.
 
-floorCouple :: (RealFrac a) => (RealFrac b) => (a, b) -> (Int, Int)
-floorCouple couple =
+floorPair :: (RealFrac a) => (RealFrac b) => (a, b) -> (Int, Int)
+floorPair couple =
   (floor (fst couple),floor (snd couple))
 
 -----------------------------------------------   Makes the angle safe for tan function.
@@ -191,6 +217,12 @@ distanceToIntensity :: Double -> Double
 distanceToIntensity distance =
   (min (distance / 7.0) 1.0) * (-0.3)
 
+-----------------------------------------------   Maps worldspace distance to normalized screenspace size (caused by perspective).
+
+distanceToSize :: Double -> Double
+distanceToSize distance =
+  1.0 / (distance + 1.0)
+  
 -----------------------------------------------   Projects sprites to screen space, returns a list representing screen, each
                                              --   pixel has (sprite id,sprite x pixel,distance), sprite id = -1 => empty.
 
@@ -212,15 +244,29 @@ projectSprites gameState =
         )
         | sprite <- (sprites gameState)
       ]
+      
+    projectOneSprite =                  -- projects a single sprite to screen list
+      (
+        \spriteInfo screenList ->
+          let
+            spritePos = floor ( (snd3 spriteInfo) * fromIntegral ((length screenList) - 1) )
+            spriteSize = 0
+          in
+            map
+              (
+                \item ->
+                  if (snd item) == spritePos
+                    then (0,0,0)
+                    else (fst item)
+              )
+              (zip screenList [0..])
+      )
   in
     -- now project "draw" to actual screen:
-    trace (show screenspaceSprites) [(0,0,0)] --[(10,1,2) | i <- [0..(fst screenSize) - 1]]
 
------------------------------------------------   Maps worldspace distance to normalized screenspace size (caused by perspective).
-
-distanceToSize :: Double -> Double
-distanceToSize distance =
-  1.0 / (distance + 1.0)
+    trace2 
+      ( projectOneSprite (screenspaceSprites !! 0) [(-1,0,1000.0) | i <- [0..(fst screenSize) - 1]] )
+      (\what -> (map (\item -> if fst3 item == -1 then 'x' else '.') what))
 
 -----------------------------------------------   Renders the 3D player view into String.
 
@@ -278,8 +324,8 @@ castRays :: GameState -> [(Double, Normal)]
 castRays gameState =
   [
     let
-      rayDirection = ((playerRot gameState) + fieldOfView / 2 - x * rayAngleStep)
-      rayResult = castRay gameState (playerPos gameState) (floorCouple (playerPos gameState)) rayDirection maxRaycastIterations
+      rayDirection = ((playerRot gameState) + fieldOfView / 2 - (fromIntegral x) * rayAngleStep)
+      rayResult = castRay gameState (playerPos gameState) (floorPair (playerPos gameState)) rayDirection maxRaycastIterations
     in
       (
         max
@@ -297,7 +343,7 @@ castRays gameState =
 castRay :: GameState -> (Double, Double) -> (Int, Int) -> Double -> Int ->  (Double, Normal)
 castRay gameState rayOrigin square rayDirection maxIterations =
   let
-    squareCoords = floorCouple rayOrigin
+    squareCoords = floorPair rayOrigin
     angle = angleTo02Pi rayDirection
   in
     if (mapSquareAt gameState square) /= squareEmpty || maxIterations == 0
@@ -305,7 +351,7 @@ castRay gameState rayOrigin square rayDirection maxIterations =
       else
         let
           squareCastResult = castRaySquare square rayOrigin angle
-          recursionResult = castRay gameState (fst squareCastResult) (addCouples square (snd squareCastResult)) angle (maxIterations - 1)
+          recursionResult = castRay gameState (fst squareCastResult) (addPairs square (snd squareCastResult)) angle (maxIterations - 1)
         in
           (
             pointPointDistance rayOrigin (fst squareCastResult) + (fst recursionResult),
@@ -382,7 +428,7 @@ mapSquareAt gameState coords
 -----------------------------------------------   Checks if given player position is valid (collisions).
 
 positionIsWalkable gameState position =
-  (mapSquareAt gameState (floorCouple position)) == squareEmpty
+  (mapSquareAt gameState (floorPair position)) == squareEmpty
 
 -----------------------------------------------   Moves player by given distance in given direction, with collisions.
 
