@@ -86,8 +86,7 @@ initialGameState = GameState
       ]
   }
 
-grayscaleMap = [                    -- characters sorted by brigtness
-    'M','$','o','?','/','!',';',':','\'','.','-']
+grayscaleMap = ['M','$','o','?','/','!',';',':','\'','.','-']          -- characters sorted by brigtness
 
 -----------------------------------------------   Functions for 3-item tuples.
 
@@ -217,6 +216,12 @@ projectSprites gameState =
     -- now project "draw" to actual screen:
     trace (show screenspaceSprites) [(0,0,0)] --[(10,1,2) | i <- [0..(fst screenSize) - 1]]
 
+-----------------------------------------------   Maps worldspace distance to normalized screenspace size (caused by perspective).
+
+distanceToSize :: Double -> Double
+distanceToSize distance =
+  1.0 / (distance + 1.0)
+
 -----------------------------------------------   Renders the 3D player view into String.
 
 render3Dview :: [(Double, Normal)] -> [(Sprite,Int,Double)] -> Int -> String
@@ -234,7 +239,7 @@ render3Dview wallMap spriteMap height =
             (
               \item ->
                 let
-                  columnHeight = floor ((1.0 / ((fst item) + 1.0)) * heightDouble)
+                  columnHeight = floor ((distanceToSize (fst item)) * heightDouble)
                 in
                   if distanceFromMiddle < columnHeight
                     then
