@@ -35,7 +35,7 @@ spriteSize :: (Int,Int)
 spriteSize = (15,10)
 
 spriteScale :: Double
-spriteScale = 3
+spriteScale = fromIntegral (snd screenSize) / fromIntegral (snd spriteSize) * 2
 
 totalMapSquares :: Int
 totalMapSquares = (fst mapSize) * (snd mapSize)
@@ -110,7 +110,8 @@ initialGameState = GameState
     sprites =
       [
         ((7.5,7.5),spriteTree),
-        ((6.5,7.5),spriteTree)
+        ((6.5,7.5),spriteTree),
+        ((7.5,2.5),spriteTree)
       ]
   }
 
@@ -327,16 +328,19 @@ render3Dview wallMap spriteMap height =
                   distance = (fst (fst item))
                   columnHeight = floor ((distanceToSize distance) * heightDouble)
                   spriteInfo = (snd item)
-                in
-                  if (thd3 spriteInfo) >= distance      -- is wall closer than sprite?
-                    -- draw wall here
-                    then if absDistanceFromMiddle < columnHeight
+                  
+                  wallSample =
+                    if absDistanceFromMiddle < columnHeight
                       then
                         if normal == normalNorth then      intensityToChar $ 0.25 + distanceToIntensity distance
                         else if normal == normalEast then  intensityToChar $ 0.50 + distanceToIntensity distance
                         else if normal == normalSouth then intensityToChar $ 0.75 + distanceToIntensity distance
                         else                               intensityToChar $ 1.00 + distanceToIntensity distance
                     else backgroundChar
+                in
+                  if (thd3 spriteInfo) >= distance      -- is wall closer than sprite?
+                    -- draw wall here
+                    then wallSample
                   else
                     -- draw sprite here
                     let
@@ -352,9 +356,8 @@ render3Dview wallMap spriteMap height =
                           in
                             if sample /= transparentChar
                               then sample
-                              else backgroundChar
-                        else backgroundChar
-                    
+                              else wallSample
+                        else wallSample
             ) (zip wallMap spriteMap) ++ "\n"
         | i <- [1..height]
       ]
