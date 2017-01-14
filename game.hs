@@ -1,4 +1,8 @@
-{- Simple game loop example. -}
+{- 
+  raycasting game in Haskell
+  
+  Miloslav Číž, 2017
+-}
 
 import System.IO
 import System.Timeout
@@ -6,6 +10,7 @@ import Data.Fixed
 import Data.Char
 import Debug.Trace
 import Control.Concurrent
+import System.CPUTime
 
 inputTimeout :: Int
 inputTimeout = 50000
@@ -43,6 +48,8 @@ totalMapSquares = (fst mapSize) * (snd mapSize)
 rayAngleStep :: Double
 rayAngleStep = fieldOfView / fromIntegral (fst screenSize)
 
+infinity = 1.0 / 0.0
+
 backgroundChar = ' '
 transparentChar = 'X'               -- marks transparency in sprites
 
@@ -76,6 +83,7 @@ gameMap1 =
   ]
 
 type Sprite = Int
+spriteNone = -1
 spriteTree = 0
 spriteZombie = 1
 
@@ -252,7 +260,7 @@ projectSprites :: GameState -> [(Sprite,Int,Double)]
 projectSprites gameState =
   let
     -- project all sprites to screenspace first:
-    screenspaceSprites =
+    screenspaceSprites =                                         -- [(sprite id,sprite x pixel,distance)]
       [
         (
           snd sprite,                                            -- sprite id
@@ -267,7 +275,7 @@ projectSprites gameState =
         | sprite <- (sprites gameState)
       ]
       
-    projectOneSprite :: (Sprite,Double,Double) -> [(Sprite,Int,Double)] -> [(Sprite,Int,Double)]  -- same format as the function return
+    projectOneSprite :: (Sprite,Double,Double) -> [(Sprite,Int,Double)] -> [(Sprite,Int,Double)]  -- [(sprite id,sprite x pixel,distance)]
     projectOneSprite =                  -- projects a single sprite to screen list
       (
         \spriteInfo screenList ->
@@ -291,7 +299,7 @@ projectSprites gameState =
               (zip screenList [0..])
       )
       
-    emptyScreenlList = [(-1,0,1000.0) | i <- [0..(fst screenSize) - 1]]
+    emptyScreenlList = [(spriteNone,0,infinity) | i <- [0..(fst screenSize) - 1]]
   in
     foldl
       (
@@ -305,7 +313,7 @@ projectSprites gameState =
             )
             (zip screenList1 screenList2)
       )
-          
+             
       emptyScreenlList
           
       [projectOneSprite spriteItem emptyScreenlList | spriteItem <- screenspaceSprites]
@@ -315,7 +323,11 @@ projectSprites gameState =
 sampleSprite :: Sprite -> (Int,Int) -> Char
 sampleSprite spriteId coordinates =
   let
-    safeCoords = ( clamp (fst coordinates) (0,(fst spriteSize) - 1), clamp (snd coordinates) (0,(snd spriteSize) - 1) )
+    safeCoords =
+      (
+        clamp (fst coordinates) (0,(fst spriteSize) - 1),
+        clamp (snd coordinates) (0,(snd spriteSize) - 1)
+      )
   in
     ((spriteList !! spriteId) !! (snd safeCoords)) !! (fst safeCoords)
 
@@ -349,29 +361,24 @@ render3Dview wallMap spriteMap height =
                         else if normal == normalEast then  intensityToChar $ 0.50 + distanceToIntensity distance
                         else if normal == normalSouth then intensityToChar $ 0.75 + distanceToIntensity distance
                         else                               intensityToChar $ 1.00 + distanceToIntensity distance
-                    else backgroundChar
+                      else backgroundChar
+                  
+                  spriteHalfHeight = floor ( spriteScale * distanceToSize (thd3 spriteInfo) * fromIntegral (snd spriteSize) / 2 )
+                  sampleX = snd3 spriteInfo
+                  sampleY = round (((1 - (1 + (fromIntegral distanceFromMiddle) / (fromIntegral spriteHalfHeight)) / 2)) * fromIntegral ((snd spriteSize) - 1))
+                  spriteSample = sampleSprite (fst3 spriteInfo) (sampleX,sampleY)
                 in
                   if (thd3 spriteInfo) >= distance      -- is wall closer than sprite?
-                    -- draw wall here
                     then wallSample
                   else
-                    -- draw sprite here
-                    let
-                      spriteHalfHeight = floor ( spriteScale * distanceToSize (thd3 spriteInfo) * fromIntegral (snd spriteSize) / 2 )
-                      --sampledSpriteTexel = 
-                    in
-                      if absDistanceFromMiddle <= spriteHalfHeight
-                        then
-                          let
-                            sampleX = snd3 spriteInfo
-                            sampleY = round (((1 - (1 + (fromIntegral distanceFromMiddle) / (fromIntegral spriteHalfHeight)) / 2)) * fromIntegral ((snd spriteSize) - 1))
-                            sample = sampleSprite (fst3 spriteInfo) (sampleX,sampleY)
-                          in
-                            if sample /= transparentChar
-                              then sample
-                              else wallSample
-                        else wallSample
-            ) (zip wallMap spriteMap) ++ "\n"
+                    if absDistanceFromMiddle <= spriteHalfHeight
+                      then
+                        if spriteSample /= transparentChar
+                          then spriteSample
+                          else wallSample
+                      else wallSample
+            )
+            (zip wallMap spriteMap) ++ "\n"
         | i <- [1..height]
       ]
 
@@ -559,9 +566,17 @@ nextGameState previousGameState inputChar =
 gameLoop :: GameState -> IO ()
 gameLoop gameState =
   do
+    t1 <- getCPUTime                                          -- for profiling, comment out otherwise
+    
     putStrLn (renderGameState3D gameState)
+    
+    t2 <- getCPUTime                                          -- for profiling, comment out otherwise
+    putStrLn (show (fromIntegral (t2 - t1) / 10e9) ++ " ms")  -- for profiling, comment out otherwise
+    
     hFlush stdout
+    
     c <- timeout inputTimeout getChar             -- wait for input, with timeout
+    
     case c of
       -- no input given
       Nothing -> do gameLoop gameState
