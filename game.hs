@@ -86,6 +86,10 @@ type Sprite = Int
 spriteNone = -1
 spriteTree = 0
 spriteZombie = 1
+spriteDemon = 2
+spriteGun = 3
+spriteUzi = 4
+spriteMedkit = 5
 
 spriteList =
   [
@@ -99,19 +103,67 @@ spriteList =
       "XXXX\\_  ____/XX",
       "XXXXXX||XXXXXXX",
       "XXXXXX||XXXXXXX",
-      "XXXXX/__\\XXXXXX"
+      "XX-=#/__\\#=-XXX"
     ],
     [
-      "XXXXXXXXXXXXXXXX",
-      "XXXXXX/`\\XXXXXXX",
-      "XXXXX(o o)XXXXXX",
-      "XXXXX|===|XXXXXX",
-      "XX/''    ''')XXX",
-      "X(==/     \\==)XX",
-      "XXXX(_____)XXXXX",
-      "XXXX|  _  |XXXXX",
-      "XXXX| |X| |XXXXX",
-      "XXX(__]X\\__)XXXX"
+      "XXXXXXXXXXXXXXX",
+      "XXXXX/`\\XXXXXXX",
+      "XXXX(o o)XXXXXX",
+      "XXXX|===|XXXXXX",
+      "X/''    ''')XXX",
+      "(==/     \\==)XX",
+      "XXX(_____)XXXXX",
+      "XXX|  _  |XXXXX",
+      "XXX| |X| |XXXXX",
+      "X-(__]#\\__)-XXX"
+    ],
+    [
+      "|\\XX/''`''\\XX/|",
+      "\\ ;`       `; /",
+      "X/  _     _  \\X",
+      "X| [WW   WW] |X",
+      "XX\\_`  A  `_/XX",
+      "XXXX\\ ,_, /XXXX",
+      "XXXX| [_] |XXXX",
+      "XXXXX\\___/XXXXX",
+      "XXXXXXXXXXXXXXX",
+      "XX-==#####==-XX"
+    ],
+    [
+      "XXXXXXXXXXXXXXX",
+      "XXXXXXXXXXXXXXX",
+      "Xl_/_\\\\\\^^^^^^]",
+      "X/  P\\_______/X",
+      "/    (__)XXXXXX",
+      "|   /XXXXXXXXXX",
+      "(___)XXXXXXXXXX",
+      "XXXXXXXXXXXXXXX",
+      "XXXXXXXXXXXXXXX",
+      " --==######==--"
+    ],
+    [
+      "|^\\XXXXXXXXX/^|",
+      "|  ^^^^^^^^^ _|",
+      "|  -o-- [[[(_o)",
+      "|___________  |",
+      "XX\\  __|X[_]\\_|",
+      "XX/ /_]XX| |XXX",
+      "X/ /XXXXX| |XXX",
+      "|_/XXXXXX|_|XXX",
+      "XXXXXXXXXXXXXXX",
+      "--===#####===--"
+    ],
+    [
+      "XXXXXXXXXXXXXXX",
+      "XX/`````````\\XX",
+      "X| ..  _  .. |X",
+      "X|   _| |_   |X",
+      "X|  [  +  ]  |X",
+      "X|   `|_|`   |X",
+      "X| ..     .. |X",
+      "XX\\_________/XX",
+      "XXXXXXXXXXXXXXX",
+      " --==#####==-- "
     ]
   ]
 
@@ -132,7 +184,12 @@ initialGameState = GameState
       [
         ((7.5,7.5),spriteTree),
         ((6.5,7.5),spriteZombie),
-        ((7.5,2.5),spriteTree)
+        ((7.5,2.5),spriteTree),
+        ((3.0,6.0),spriteDemon),
+        ((8.1,8.5),spriteDemon),
+        ((9.0,6.5),spriteGun),
+        ((2.0,8.0),spriteUzi),
+        ((12.0,13.0),spriteMedkit)
       ]
   }
 
