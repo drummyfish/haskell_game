@@ -12,46 +12,22 @@ import Debug.Trace
 import Control.Concurrent
 import System.CPUTime
 
-frameDelay :: Int
 frameDelay = 10000     -- in microseconds
-
-stepLength :: Double
 stepLength = 0.1
-
-rotationStep :: Double
 rotationStep = 0.06
-
-mapSize :: (Int,Int)
 mapSize = (15,15)
-
-screenSize :: (Int,Int)
-screenSize = (150,30)
-
-fieldOfView :: Double
+infoBarHeight = 5
+screenSize = (100,38)
+viewSize = ( (fst screenSize) , (snd screenSize) - infoBarHeight)
 fieldOfView = pi / 2
-
-focalLength :: Double
 focalLength = 0.5
-
-maxRaycastIterations :: Int
 maxRaycastIterations = 20
-
-spriteSize :: (Int,Int)
 spriteSize = (15,10)
-
-spriteScale :: Double
-spriteScale = fromIntegral (snd screenSize) / fromIntegral (snd spriteSize) * 2
-
-totalMapSquares :: Int
+spriteScale = fromIntegral (snd viewSize) / fromIntegral (snd spriteSize) * 2
 totalMapSquares = (fst mapSize) * (snd mapSize)
-
-rayAngleStep :: Double
-rayAngleStep = fieldOfView / fromIntegral (fst screenSize)
-
+rayAngleStep = fieldOfView / fromIntegral (fst viewSize)
 infinity = 1.0 / 0.0
-
 animationFrameStep = 4
-
 backgroundChar = ' '
 transparentChar = 'X'               -- marks transparency in sprites
 
@@ -388,7 +364,7 @@ projectSprites gameState =
               (zip screenList [0..])
       )
       
-    emptyScreenlList = [(spriteNone,0,infinity) | i <- [0..(fst screenSize) - 1]]
+    emptyScreenlList = [(spriteNone,0,infinity) | i <- [0..(fst viewSize) - 1]]
   in
     foldl
       (
@@ -473,6 +449,23 @@ render3Dview wallMap spriteMap height frameNumber =
         | i <- [1..height]
       ]
 
+-----------------------------------------------   Renders the lower info bar to String.
+
+renderInfoBar :: GameState -> String
+renderInfoBar gameState =
+  let
+    separatorPositions = [0,15,31,62]
+    separator = "+" ++ [if i `elem` separatorPositions then '+' else '~' | i <- [3..(fst viewSize)]] ++ "+"
+    emptyLine = "|" ++ [if i `elem` separatorPositions then '|' else ' ' | i <- [3..(fst viewSize)]] ++ "|\n"
+    infoLine = "|  level: 1  |  score: 1000  |  health: 100/100  ########## |  ammo: 100/100"
+    infoLineRest = [' ' | i <- [(length infoLine)..(fst viewSize) - 2]] ++ "|\n"
+  in
+    separator ++ "\n" ++
+    emptyLine ++
+    infoLine ++ infoLineRest ++
+    emptyLine ++
+    separator
+      
 -----------------------------------------------   Renders the game in 3D.
 
 renderGameState3D :: GameState -> String
@@ -484,8 +477,48 @@ renderGameState3D gameState =
   --  ++
   --  "\n"
   --  ++
-    render3Dview drawInfo (projectSprites gameState) (snd screenSize) (frameNumber gameState)
+    render3Dview drawInfo (projectSprites gameState) (snd viewSize) (frameNumber gameState)
+    ++
+    renderInfoBar gameState
 
+-----------------------------------------------   Renders the game state into string, simple version.
+
+renderGameStateSimple :: GameState -> String
+renderGameStateSimple gameState =
+  concat
+    (
+      map
+        (   
+          \square ->
+            (
+              if mod (snd square) (fst mapSize) == 0
+                then "\n"
+                else ""
+            )
+            ++
+            (
+              if floor (fst (playerPos gameState)) == fst (arrayToMapCoords (snd square)) &&
+                 floor (snd (playerPos gameState)) == snd (arrayToMapCoords (snd square))
+                then
+                  case round (4.0 * (playerRot gameState) / pi)  of
+                    0 -> "->"
+                    1 -> "/^"
+                    2 -> "|^"
+                    3 -> "^\\"
+                    4 -> "<-"
+                    5 -> "./"
+                    6 -> ".|"
+                    7 -> "\\."
+                    8 -> "->"
+                else if fst square == squareEmpty
+                  then "  "
+                  else "[]"
+            )
+        ) (zip (gameMap gameState) [0..])
+    )
+  ++
+  "\npos: " ++ (show (playerPos gameState)) ++ "\nrot: " ++ (show (playerRot gameState)) ++ "\n"
+    
 -----------------------------------------------   Gets the distance from projection origin to projection plane.
 
 distanceToProjectionPlane :: Double -> Double -> Double
@@ -509,7 +542,7 @@ castRays gameState =
         snd rayResult
       )
 
-    | x <- [0..(fst screenSize) - 1]
+    | x <- [0..(fst viewSize) - 1]
   ]
 
 -----------------------------------------------   Casts a ray and returns an information (distance, normal) about a wall it hits.
@@ -553,44 +586,6 @@ castRaySquare squareCoords rayPosition rayAngle =
     if (pointPointDistance rayPosition intersection1) <= (pointPointDistance rayPosition intersection2)
       then (intersection1,(if boundX == (fst squareCoords) then -1 else 1,0))
       else (intersection2,(0,if boundY == (snd squareCoords) then -1 else 1))
-
------------------------------------------------   Renders the game state into string, simple version.
-
-renderGameStateSimple :: GameState -> String
-renderGameStateSimple gameState =
-  concat
-    (
-      map
-        (   
-          \square ->
-            (
-              if mod (snd square) (fst mapSize) == 0
-                then "\n"
-                else ""
-            )
-            ++
-            (
-              if floor (fst (playerPos gameState)) == fst (arrayToMapCoords (snd square)) &&
-                 floor (snd (playerPos gameState)) == snd (arrayToMapCoords (snd square))
-                then
-                  case round (4.0 * (playerRot gameState) / pi)  of
-                    0 -> "->"
-                    1 -> "/^"
-                    2 -> "|^"
-                    3 -> "^\\"
-                    4 -> "<-"
-                    5 -> "./"
-                    6 -> ".|"
-                    7 -> "\\."
-                    8 -> "->"
-                else if fst square == squareEmpty
-                  then "  "
-                  else "[]"
-            )
-        ) (zip (gameMap gameState) [0..])
-    )
-  ++
-  "\npos: " ++ (show (playerPos gameState)) ++ "\nrot: " ++ (show (playerRot gameState)) ++ "\n"
 
 -----------------------------------------------   Returns map square at given coords.
 
@@ -677,12 +672,12 @@ gameLoop :: GameState -> IO ()
 gameLoop gameState =
   do
     threadDelay frameDelay
-    t1 <- getCPUTime                                          -- for profiling, comment out otherwise
+    -- t1 <- getCPUTime                                          -- for profiling, comment out otherwise
     
     putStrLn (renderGameState3D gameState)
     
-    t2 <- getCPUTime                                          -- for profiling, comment out otherwise
-    putStrLn (show (fromIntegral (t2 - t1) / 10e9) ++ " ms")  -- for profiling, comment out otherwise
+    -- t2 <- getCPUTime                                          -- for profiling, comment out otherwise
+    -- putStrLn (show (fromIntegral (t2 - t1) / 10e9) ++ " ms")  -- for profiling, comment out otherwise
     
     hFlush stdout
     
