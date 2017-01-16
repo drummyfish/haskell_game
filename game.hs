@@ -12,8 +12,8 @@ import Debug.Trace
 import Control.Concurrent
 import System.CPUTime
 
-inputTimeout :: Int
-inputTimeout = 50000
+frameDelay :: Int
+frameDelay = 10000     -- in microseconds
 
 stepLength :: Double
 stepLength = 0.1
@@ -25,7 +25,7 @@ mapSize :: (Int,Int)
 mapSize = (15,15)
 
 screenSize :: (Int,Int)
-screenSize = (150,40)
+screenSize = (150,30)
 
 fieldOfView :: Double
 fieldOfView = pi / 2
@@ -652,12 +652,31 @@ nextGameState previousGameState inputChar =
     'e' -> strafePlayer previousGameState (-1 * stepLength)
     _   -> previousGameState)
   {frameNumber = (frameNumber previousGameState) + 1}
-
+  
+-----------------------------------------------   Reads all available chars on input and returns the last one, or ' ' if not available.
+  
+getLastChar :: IO Char
+getLastChar =
+  do
+    isInput <- hWaitForInput stdin 1
+    
+    if isInput
+      then do
+             c1 <- getChar
+             c2 <- getLastChar
+             
+             if c2 == ' '
+               then return c1
+               else return c2
+               
+      else do return ' '
+    
 -----------------------------------------------   Main game loop.
 
 gameLoop :: GameState -> IO ()
 gameLoop gameState =
   do
+    threadDelay frameDelay
     t1 <- getCPUTime                                          -- for profiling, comment out otherwise
     
     putStrLn (renderGameState3D gameState)
@@ -667,16 +686,12 @@ gameLoop gameState =
     
     hFlush stdout
     
-    c <- timeout inputTimeout getChar             -- wait for input, with timeout
+    c <- getLastChar
     
     case c of
-      -- no input given
-      Nothing -> do gameLoop (nextGameState gameState ' ')
-      -- quit on 'q'
-      Just 'x' -> do putStrLn "quitting"                     
-      -- input was given
-      Just input -> do gameLoop (nextGameState gameState input)
-
+      'x' -> do putStrLn "quitting"
+      _   -> do gameLoop (nextGameState gameState c)
+    
 -----------------------------------------------
         
 main = 
