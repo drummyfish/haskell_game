@@ -50,6 +50,8 @@ rayAngleStep = fieldOfView / fromIntegral (fst screenSize)
 
 infinity = 1.0 / 0.0
 
+animationFrameStep = 4
+
 backgroundChar = ' '
 transparentChar = 'X'               -- marks transparency in sprites
 
@@ -85,15 +87,19 @@ gameMap1 =
 type Sprite = Int
 spriteNone = -1
 spriteTree = 0
-spriteZombie = 1
-spriteDemon = 2
-spriteGun = 3
-spriteUzi = 4
-spriteMedkit = 5
+spriteZombie = 1   -- animated, 2 frames
+
+spriteDemon = 3    -- animated, 2 frames
+
+spriteGun = 5
+spriteUzi = 6
+spriteMedkit = 7
+
+animatedSpriteIds = [1,3]       -- list of sprite IDs that are animated
 
 spriteList =
   [
-    [
+    [ -- 0
       "XXXXXXXXXXXXXXX",
       "XXXX/'''''\\XXXX",
       "XX/'       ''\\X",
@@ -105,43 +111,67 @@ spriteList =
       "XXXXXX||XXXXXXX",
       "XX-=#/__\\#=-XXX"
     ],
-    [
+    [ -- 1
       "XXXXXXXXXXXXXXX",
-      "XXXXX/`\\XXXXXXX",
-      "XXXX(o o)XXXXXX",
-      "XXXX|===|XXXXXX",
-      "X/''    ''')XXX",
-      "(==/     \\==)XX",
-      "XXX(_____)XXXXX",
-      "XXX|  _  |XXXXX",
-      "XXX| |X| |XXXXX",
-      "X-(__]#\\__)-XXX"
+      "XXXXX/```\\XXXXX",
+      "XXXXX[o.o]XXXXX",
+      "XXXXX\\II]/XXXXX",
+      "XXX/^^````(III)",
+      "X(III]    /XXXX",
+      "XXXX(_____)XXXX",
+      "XXXX(  _  )XXXX",
+      "XXXX| |X\\ |XXXX",
+      "X--(__]=|__)--X"
     ],
-    [
-      "|\\XX/''`''\\XX/|",
-      "\\ ;`       `; /",
-      "X/  _     _  \\X",
-      "X| [WW   WW] |X",
-      "XX\\_`  A  `_/XX",
-      "XXXX\\ ,_, /XXXX",
+    [ -- 2
+      "XXXXXXXXXXXXXXXX",
+      "XXXXX/```\\XXXXX",
+      "XXXXX[o.o]XXXXX",
+      "XXXXX\\[II/XXXXX",
+      "X(III]```^^\\XXX",
+      "XXXX\\    (III)X",
+      "XXXX|_____)XXXX",
+      "XXXX(  _  )XXXX",
+      "XXXX/ | | |XXXX",
+      "X--(__/=|__)--X"
+    ],
+    [ -- 3
+      "X|\\X-''`''-X/|X",
+      "X\\;`       `;/X",
+      "X/ ,_     _, \\X",
+      "X( \\0) , (0/ )X",
+      "XX\\_:  ^  :_/XX",
+      "XXXX\\ |^| /XXXX",
       "XXXX| [_] |XXXX",
       "XXXXX\\___/XXXXX",
       "XXXXXXXXXXXXXXX",
-      "XX-==#####==-XX"
+      "X--==#####==--X"
     ],
-    [
+    [ -- 4
+      "|\\XX-'```'-XX/|",
+      "\\ ;`       `; /",
+      "X/ ,_ \\ / _, \\X",
+      "X( (0)   (0) )X",
+      "XX\\_   A   _/XX",
+      "XXXX) ___ (XXXX",
+      "XXXX( ' ' )XXXX",
+      "XXXXX'---'XXXXX",
+      "XXXXXXXXXXXXXXX",
+      "X--==#####==--X"
+    ],
+    [ -- 5
       "XXXXXXXXXXXXXXX",
       "XXXXXXXXXXXXXXX",
       "Xl_/_\\\\\\^^^^^^]",
       "X/  P\\_______/X",
-      "/    (__)XXXXXX",
+      "/    ({_)XXXXXX",
       "|   /XXXXXXXXXX",
       "(___)XXXXXXXXXX",
       "XXXXXXXXXXXXXXX",
       "XXXXXXXXXXXXXXX",
-      " --==######==--"
+      "X--==#####==--X"
     ],
-    [
+    [ -- 6
       "|^\\XXXXXXXXX/^|",
       "|  ^^^^^^^^^ _|",
       "|  -o-- [[[(_o)",
@@ -153,7 +183,7 @@ spriteList =
       "XXXXXXXXXXXXXXX",
       "--===#####===--"
     ],
-    [
+    [ -- 7
       "XXXXXXXXXXXXXXX",
       "XX/`````````\\XX",
       "X| ..  _  .. |X",
@@ -171,6 +201,7 @@ data GameState = GameState
   {
     playerPos :: (Double,Double),          -- x, y, starting top left (map AND square)
     playerRot :: Double,                   -- rotation in radians, CCW, 0 = facing right
+    frameNumber :: Int,
     gameMap :: [Int],
     sprites :: [((Double,Double),Sprite)]  -- list of sprites with world position
   } deriving (Show)
@@ -179,6 +210,7 @@ initialGameState = GameState
   {
     playerPos = (7.5,8.5),
     playerRot = 0.0,
+    frameNumber = 0,
     gameMap = gameMap1,
     sprites =
       [
@@ -375,23 +407,25 @@ projectSprites gameState =
           
       [projectOneSprite spriteItem emptyScreenlList | spriteItem <- screenspaceSprites]
       
------------------------------------------------   
+-----------------------------------------------   Samples given sprite, including animation based on frame number.
 
-sampleSprite :: Sprite -> (Int,Int) -> Char
-sampleSprite spriteId coordinates =
+sampleSprite :: Sprite -> (Int,Int) -> Int -> Char
+sampleSprite spriteId coordinates frameNumber =
   let
     safeCoords =
       (
         clamp (fst coordinates) (0,(fst spriteSize) - 1),
         clamp (snd coordinates) (0,(snd spriteSize) - 1)
       )
+      
+    spriteIndex = if ((frameNumber `div` animationFrameStep) `mod` 2 == 1) && (spriteId `elem` animatedSpriteIds) then spriteId + 1 else spriteId
   in
-    ((spriteList !! spriteId) !! (snd safeCoords)) !! (fst safeCoords)
-
+    ((spriteList !! spriteIndex) !! (snd safeCoords)) !! (fst safeCoords)
+    
 -----------------------------------------------   Renders the 3D player view into String.
 
-render3Dview :: [(Double, Normal)] -> [(Sprite,Int,Double)] -> Int -> String
-render3Dview wallMap spriteMap height =
+render3Dview :: [(Double, Normal)] -> [(Sprite,Int,Double)] -> Int -> Int -> String
+render3Dview wallMap spriteMap height frameNumber =
   let
     middle = div height 2 + 1
     heightDouble = (fromIntegral height)
@@ -423,7 +457,7 @@ render3Dview wallMap spriteMap height =
                   spriteHalfHeight = floor ( spriteScale * distanceToSize (thd3 spriteInfo) * fromIntegral (snd spriteSize) / 2 )
                   sampleX = snd3 spriteInfo
                   sampleY = round (((1 - (1 + (fromIntegral distanceFromMiddle) / (fromIntegral spriteHalfHeight)) / 2)) * fromIntegral ((snd spriteSize) - 1))
-                  spriteSample = sampleSprite (fst3 spriteInfo) (sampleX,sampleY)
+                  spriteSample = sampleSprite (fst3 spriteInfo) (sampleX,sampleY) frameNumber
                 in
                   if (thd3 spriteInfo) >= distance      -- is wall closer than sprite?
                     then wallSample
@@ -450,7 +484,7 @@ renderGameState3D gameState =
   --  ++
   --  "\n"
   --  ++
-    render3Dview drawInfo (projectSprites gameState) (snd screenSize)
+    render3Dview drawInfo (projectSprites gameState) (snd screenSize) (frameNumber gameState)
 
 -----------------------------------------------   Gets the distance from projection origin to projection plane.
 
@@ -609,14 +643,15 @@ strafePlayer previousGameState distance =
 
 nextGameState :: GameState -> Char -> GameState
 nextGameState previousGameState inputChar =
-  case inputChar of
+  (case inputChar of
     'w' -> movePlayerForward previousGameState stepLength
     's' -> movePlayerForward previousGameState (-1 * stepLength)
     'a' -> previousGameState { playerRot = angleTo02Pi ((playerRot previousGameState) + rotationStep) }
     'd' -> previousGameState { playerRot = angleTo02Pi ((playerRot previousGameState) - rotationStep) }
     'q' -> strafePlayer previousGameState stepLength
     'e' -> strafePlayer previousGameState (-1 * stepLength)
-    _   -> previousGameState
+    _   -> previousGameState)
+  {frameNumber = (frameNumber previousGameState) + 1}
 
 -----------------------------------------------   Main game loop.
 
@@ -636,7 +671,7 @@ gameLoop gameState =
     
     case c of
       -- no input given
-      Nothing -> do gameLoop gameState
+      Nothing -> do gameLoop (nextGameState gameState ' ')
       -- quit on 'q'
       Just 'x' -> do putStrLn "quitting"                     
       -- input was given
