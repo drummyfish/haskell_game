@@ -178,6 +178,8 @@ data GameState = GameState
     playerPos :: (Double,Double),          -- x, y, starting top left (map AND square)
     playerRot :: Double,                   -- rotation in radians, CCW, 0 = facing right
     frameNumber :: Int,
+    currentLevel :: Int,
+    currentScore :: Int,
     gameMap :: [Int],
     sprites :: [((Double,Double),Sprite)]  -- list of sprites with world position
   } deriving (Show)
@@ -187,6 +189,8 @@ initialGameState = GameState
     playerPos = (7.5,8.5),
     playerRot = 0.0,
     frameNumber = 0,
+    currentLevel = 1,
+    currentScore = 0,
     gameMap = gameMap1,
     sprites =
       [
@@ -208,6 +212,12 @@ grayscaleMap = ['M','$','o','?','/','!',';',':','\'','.','-']          -- charac
 fst3 (x, _, _) = x
 snd3 (_, x, _) = x
 thd3 (_, _, x) = x
+
+-----------------------------------------------   Fills given string with spaces to given length.
+
+toLength :: String -> Int -> String
+toLength what outputLength =
+  what ++ [' ' | i <- [1.. outputLength - length(what)]]
 
 -----------------------------------------------   Alternative version of trace for debugging.
 
@@ -383,21 +393,26 @@ projectSprites gameState =
           
       [projectOneSprite spriteItem emptyScreenlList | spriteItem <- screenspaceSprites]
       
------------------------------------------------   Samples given sprite, including animation based on frame number.
+-----------------------------------------------   Samples given sprite.
 
 sampleSprite :: Sprite -> (Int,Int) -> Int -> Char
-sampleSprite spriteId coordinates frameNumber =
+sampleSprite spriteId coordinates animationFrame =
   let
     safeCoords =
       (
         clamp (fst coordinates) (0,(fst spriteSize) - 1),
         clamp (snd coordinates) (0,(snd spriteSize) - 1)
       )
-      
-    spriteIndex = if ((frameNumber `div` animationFrameStep) `mod` 2 == 1) && (spriteId `elem` animatedSpriteIds) then spriteId + 1 else spriteId
   in
-    ((spriteList !! spriteIndex) !! (snd safeCoords)) !! (fst safeCoords)
+    ((spriteList !! (spriteId + animationFrame)) !! (snd safeCoords)) !! (fst safeCoords)
     
+-----------------------------------------------   Gets animation frame for current frame number.
+
+animationFrameForSprite :: Sprite -> Int -> Int
+animationFrameForSprite spriteId frameNumber
+  | ((frameNumber `div` animationFrameStep) `mod` 2 == 1) && (spriteId `elem` animatedSpriteIds) = 1
+  | otherwise = 0
+
 -----------------------------------------------   Renders the 3D player view into String.
 
 render3Dview :: [(Double, Normal)] -> [(Sprite,Int,Double)] -> Int -> Int -> String
@@ -433,7 +448,7 @@ render3Dview wallMap spriteMap height frameNumber =
                   spriteHalfHeight = floor ( spriteScale * distanceToSize (thd3 spriteInfo) * fromIntegral (snd spriteSize) / 2 )
                   sampleX = snd3 spriteInfo
                   sampleY = round (((1 - (1 + (fromIntegral distanceFromMiddle) / (fromIntegral spriteHalfHeight)) / 2)) * fromIntegral ((snd spriteSize) - 1))
-                  spriteSample = sampleSprite (fst3 spriteInfo) (sampleX,sampleY) frameNumber
+                  spriteSample = sampleSprite (fst3 spriteInfo) (sampleX,sampleY) (animationFrameForSprite (fst3 spriteInfo) frameNumber)
                 in
                   if (thd3 spriteInfo) >= distance      -- is wall closer than sprite?
                     then wallSample
@@ -454,15 +469,14 @@ render3Dview wallMap spriteMap height frameNumber =
 renderInfoBar :: GameState -> String
 renderInfoBar gameState =
   let
-    separatorPositions = [0,15,31,62]
+    separatorPositions = [0,15,31,63]
     separator = "+" ++ [if i `elem` separatorPositions then '+' else '~' | i <- [3..(fst viewSize)]] ++ "+"
     emptyLine = "|" ++ [if i `elem` separatorPositions then '|' else ' ' | i <- [3..(fst viewSize)]] ++ "|\n"
-    infoLine = "|  level: 1  |  score: 1000  |  health: 100/100  ########## |  ammo: 100/100"
-    infoLineRest = [' ' | i <- [(length infoLine)..(fst viewSize) - 2]] ++ "|\n"
+    infoLine = "|  level: " ++ (toLength (show (currentLevel gameState)) 3) ++ "|  score: " ++ (toLength (show (currentScore gameState)) 6) ++ "|  health: 100/100  ##########  |  ammo: 100/100"
   in
     separator ++ "\n" ++
     emptyLine ++
-    infoLine ++ infoLineRest ++
+    (toLength infoLine ((fst screenSize) - 1)) ++ "|\n" ++
     emptyLine ++
     separator
       
