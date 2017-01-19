@@ -32,7 +32,16 @@ animationFrameStep = 4
 backgroundChar = ' '
 transparentChar = 'X'               -- marks transparency in sprites
 
+fireRateKnife = 6
+fireRateGun = 10
+fireRateUzi = 4
+
 weaponSpritePosition = ((fst viewSize) `div` 2,1 + snd viewSize - snd spriteSize)
+
+type Weapon = Int
+weaponKnife = 0
+weaponGun = 1
+weaponUzi = 2
 
 type MapSquare = Int
 squareEmpty = 0                     -- map square enums
@@ -208,7 +217,7 @@ spriteList =
       "XXX\\ \\      |XX"],
      [ -- 11
       "XWWWWWWWXXXXXXX",
-      "WW/\^^\\WWXXXXXX",
+      "WW/^^\\WWXXXXXXX",
       "WW|:) Y\\WXXXXXX",
       "XW(:( _ \\XXXXXX",
       "XXX|:( \\ \\XXXXX",
@@ -247,17 +256,20 @@ data GameState = GameState
     playerPos :: (Double,Double),          -- x, y, starting top left (map AND square)
     playerRot :: Double,                   -- rotation in radians, CCW, 0 = facing right
     frameNumber :: Int,
+    currentWeapon :: Int,
     currentLevel :: Int,
     currentScore :: Int,
     gameMap :: [Int],
-    sprites :: [((Double,Double),Sprite)]  -- list of sprites with world position
+    sprites :: [((Double,Double),Sprite)], -- list of sprites with world position
+    fireCountdown :: Int                   -- counter for implementing different fire rates
   } deriving (Show)
-
+  
 initialGameState = GameState
   {
     playerPos = (7.5,8.5),
     playerRot = 0.0,
     frameNumber = 0,
+    currentWeapon = 0,
     currentLevel = 1,
     currentScore = 0,
     gameMap = gameMap1,
@@ -271,7 +283,8 @@ initialGameState = GameState
         ((9.0,6.5),spriteGun),
         ((2.0,8.0),spriteUzi),
         ((12.0,13.0),spriteMedkit)
-      ]
+      ],
+    fireCountdown = 0
   }
 
 grayscaleMap = ['M','$','o','?','/','!',';',':','\'','.','-']          -- characters sorted by brigtness
@@ -581,29 +594,52 @@ overlay background foreground position backgroundResolution foregroundResolution
     concat (foregroundLines) ++
     concat (thirdLines)
 
+-----------------------------------------------
+
+weaponFireRate :: Weapon -> Int
+weaponFireRate weaponId
+  | weaponId == weaponKnife = fireRateKnife
+  | weaponId == weaponGun   = fireRateGun
+  | weaponId == weaponUzi   = fireRateUzi
+  | otherwise               = 1
+ 
+-----------------------------------------------
+
+weaponSprite :: Weapon -> Int
+weaponSprite weaponId
+  | weaponId == weaponKnife = spriteFPKnife
+  | weaponId == weaponGun   = spriteFPGun
+  | weaponId == weaponUzi   = spriteFPUzi
+  | otherwise               = spriteFPKnife
+  
+
 -----------------------------------------------   Renders the game in 3D.
 
-renderGameState3D :: GameState -> String
-renderGameState3D gameState =
+renderGameState :: GameState -> String
+renderGameState gameState =
   let
     drawInfo = castRays gameState
+    gunSprite = weaponSprite (currentWeapon gameState) +
+      if (fireCountdown gameState) /= 0 --  > (weaponFireRate (currentWeapon gameState)) - 3 -- == 0 --(fireCountdown gameState)
+        then 1
+        else 0
   in
     (
       overlay
         (render3Dview drawInfo (projectSprites gameState) (snd viewSize) (frameNumber gameState))
-        (concat (spriteList !! spriteFPGun))
+        (concat (spriteList !! gunSprite))
         weaponSpritePosition
         (addPairs viewSize (1,0))
         spriteSize
         transparentChar
     )
     ++
-    renderInfoBar gameState
-
+    renderInfoBar gameState 
+    
 -----------------------------------------------   Renders the game state into string, simple version.
 
-renderGameStateSimple :: GameState -> String
-renderGameStateSimple gameState =
+renderMap :: GameState -> String
+renderMap gameState =
   concat
     (
       map
@@ -715,6 +751,7 @@ mapSquareAt gameState coords
 
 -----------------------------------------------   Checks if given player position is valid (collisions).
 
+positionIsWalkable :: GameState -> (Double,Double) -> Bool
 positionIsWalkable gameState position =
   (mapSquareAt gameState (floorPair position)) == squareEmpty
 
@@ -753,19 +790,40 @@ strafePlayer :: GameState -> Double -> GameState
 strafePlayer previousGameState distance =
   movePlayerInDirection previousGameState (angleTo02Pi ((playerRot previousGameState) + pi / 2)) distance
 
+-----------------------------------------------
+
+fire :: GameState -> GameState
+fire gameState =
+  if (fireCountdown gameState) == 0
+    then gameState { fireCountdown = weaponFireRate (currentWeapon gameState) }
+    else gameState
+  
 -----------------------------------------------   Computes the next game state.
 
 nextGameState :: GameState -> Char -> GameState
 nextGameState previousGameState inputChar =
-  (case inputChar of
-    'w' -> movePlayerForward previousGameState stepLength
-    's' -> movePlayerForward previousGameState (-1 * stepLength)
-    'a' -> previousGameState { playerRot = angleTo02Pi ((playerRot previousGameState) + rotationStep) }
-    'd' -> previousGameState { playerRot = angleTo02Pi ((playerRot previousGameState) - rotationStep) }
-    'q' -> strafePlayer previousGameState stepLength
-    'e' -> strafePlayer previousGameState (-1 * stepLength)
-    _   -> previousGameState)
-  {frameNumber = (frameNumber previousGameState) + 1}
+  let
+    newGameState =
+      case inputChar of
+        'w' -> movePlayerForward previousGameState stepLength
+        's' -> movePlayerForward previousGameState (-1 * stepLength)
+        'a' -> previousGameState { playerRot = angleTo02Pi ((playerRot previousGameState) + rotationStep) }
+        'd' -> previousGameState { playerRot = angleTo02Pi ((playerRot previousGameState) - rotationStep) }
+        'q' -> strafePlayer previousGameState stepLength
+        'e' -> strafePlayer previousGameState (-1 * stepLength)
+        '1' -> previousGameState { currentWeapon = 0 }
+        '2' -> previousGameState { currentWeapon = 1 }
+        '3' -> previousGameState { currentWeapon = 2 }
+        'p' -> fire previousGameState
+        _   -> previousGameState
+  in
+    newGameState
+    {
+      frameNumber = (frameNumber newGameState) + 1
+    }
+    {
+      fireCountdown = max ((fireCountdown newGameState) - 1) 0
+    }
   
 -----------------------------------------------   Reads all available chars on input and returns the last one, or ' ' if not available.
   
@@ -793,7 +851,7 @@ gameLoop gameState =
     threadDelay frameDelay
     -- t1 <- getCPUTime                                          -- for profiling, comment out otherwise
     
-    putStrLn (renderGameState3D gameState)
+    putStrLn (renderGameState gameState)
     
     -- t2 <- getCPUTime                                          -- for profiling, comment out otherwise
     -- putStrLn (show (fromIntegral (t2 - t1) / 10e9) ++ " ms")  -- for profiling, comment out otherwise
