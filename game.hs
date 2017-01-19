@@ -11,13 +11,14 @@ import Data.Char
 import Debug.Trace
 import Control.Concurrent
 import System.CPUTime
+import Data.List
 
 frameDelay = 10000     -- in microseconds
 stepLength = 0.1
 rotationStep = 0.06
 mapSize = (15,15)
 infoBarHeight = 5
-screenSize = (100,38)
+screenSize = (100,35)
 viewSize = ( (fst screenSize) , (snd screenSize) - infoBarHeight)
 fieldOfView = pi / 2
 focalLength = 0.5
@@ -30,6 +31,8 @@ infinity = 1.0 / 0.0
 animationFrameStep = 4
 backgroundChar = ' '
 transparentChar = 'X'               -- marks transparency in sprites
+
+weaponSpritePosition = ((fst viewSize) `div` 2,1 + snd viewSize - snd spriteSize)
 
 type MapSquare = Int
 squareEmpty = 0                     -- map square enums
@@ -71,7 +74,14 @@ spriteGun = 5
 spriteUzi = 6
 spriteMedkit = 7
 
-animatedSpriteIds = [1,3]       -- list of sprite IDs that are animated
+spriteFPKnife = 8  -- animated, 2 frames
+
+spriteFPGun = 10   -- animated, 2 frames
+
+spriteFPUzi = 12   -- animated, 2 frames
+
+
+animatedSpriteIds = [1,3,8,10,12]     -- list of sprite IDs that are animated
 
 spriteList =
   [
@@ -85,8 +95,7 @@ spriteList =
       "XXXX\\_  ____/XX",
       "XXXXXX||XXXXXXX",
       "XXXXXX||XXXXXXX",
-      "XX-=#/__\\#=-XXX"
-    ],
+      "XX-=#/__\\#=-XXX"],
     [ -- 1
       "XXXXXXXXXXXXXXX",
       "XXXXX/```\\XXXXX",
@@ -97,8 +106,7 @@ spriteList =
       "XXXX(_____)XXXX",
       "XXXX(  _  )XXXX",
       "XXXX| |X\\ |XXXX",
-      "X--(__]=|__)--X"
-    ],
+      "X--(__]=|__)--X"],
     [ -- 2
       "XXXXXXXXXXXXXXXX",
       "XXXXX/```\\XXXXX",
@@ -109,8 +117,7 @@ spriteList =
       "XXXX|_____)XXXX",
       "XXXX(  _  )XXXX",
       "XXXX/ | | |XXXX",
-      "X--(__/=|__)--X"
-    ],
+      "X--(__/=|__)--X"],
     [ -- 3
       "X|\\X-''`''-X/|X",
       "X\\;`       `;/X",
@@ -121,8 +128,7 @@ spriteList =
       "XXXX| [_] |XXXX",
       "XXXXX\\___/XXXXX",
       "XXXXXXXXXXXXXXX",
-      "X--==#####==--X"
-    ],
+      "X--==#####==--X"],
     [ -- 4
       "|\\XX-'```'-XX/|",
       "\\ ;`       `; /",
@@ -133,8 +139,7 @@ spriteList =
       "XXXX( ' ' )XXXX",
       "XXXXX'---'XXXXX",
       "XXXXXXXXXXXXXXX",
-      "X--==#####==--X"
-    ],
+      "X--==#####==--X"],
     [ -- 5
       "XXXXXXXXXXXXXXX",
       "XXXXXXXXXXXXXXX",
@@ -145,8 +150,7 @@ spriteList =
       "(___)XXXXXXXXXX",
       "XXXXXXXXXXXXXXX",
       "XXXXXXXXXXXXXXX",
-      "X--==#####==--X"
-    ],
+      "X--==#####==--X"],
     [ -- 6
       "|^\\XXXXXXXXX/^|",
       "|  ^^^^^^^^^ _|",
@@ -157,8 +161,7 @@ spriteList =
       "X/ /XXXXX| |XXX",
       "|_/XXXXXX|_|XXX",
       "XXXXXXXXXXXXXXX",
-      "--===#####===--"
-    ],
+      "--===#####===--"],
     [ -- 7
       "XXXXXXXXXXXXXXX",
       "XX/`````````\\XX",
@@ -169,8 +172,74 @@ spriteList =
       "X| ..     .. |X",
       "XX\\_________/XX",
       "XXXXXXXXXXXXXXX",
-      " --==#####==-- "
-    ]
+      " --==#####==-- "],
+    [ -- 8
+      "XXXXXXXXXXXXXXX",
+      "XXXXXXXXXXXXXXX",
+      "XXXXXXXXXXXXXXX",
+      "XXXXXXXXX/|XXXX",                   
+      "XXXXXXXX/ |XXXX",
+      "XXXXXXX( ,|XXXX",
+      "XXXXXXX| |<XXXX",
+      "XXXXXXX| |<XXXX",
+      "XXXXXXX| |<XXXX",
+      "XXXXXXX| |<XXXX"],
+     [ -- 9
+      "XXXXXXXXXXXXXXX",
+      "XXXXXXXXXXXXXXX",
+      "XX|\\XXXXXXXXXXX",
+      "XX| \\XXXXXXXXXX",
+      "XX( ,\\XXXXXXXXX",
+      "XXX\\ \\LXXXXXXXX",
+      "XXXX\\ \\LXXXXXXX",
+      "XXXXX\\ \\LX/\\XXX",
+      "XXXXXX\\ \\V /XXX",
+      "XXXX\\^^ ,  \\XXX"],
+     [ -- 10
+      "X/^^\\XXXXXXXXXX",
+      "[:\\ Y\\XXXXXXXXX",
+      "X\\:\\__`\\XXXXXXX",
+      "XX\\:\\ \\ \\XXXXXX",
+      "XXX\\:\\`  `\\XXXX",
+      "XXX/\\:\\____\\XXX",
+      "XX(_|::\\ P |\\XX",
+      "XX( \\_:|   | )X",
+      "XX(\\_ )-___/ /X",
+      "XXX\\ \\      |XX"],
+     [ -- 11
+      "XWWWWWWWXXXXXXX",
+      "WW/\^^\\WWXXXXXX",
+      "WW|:) Y\\WXXXXXX",
+      "XW(:( _ \\XXXXXX",
+      "XXX|:( \\ \\XXXXX",
+      "XXX\\::)`  \\XXXX",
+      "XXXX\\:(    \\XXX",
+      "XXXX(::\\____|\\X",
+      "XXX/|::|  P | |",
+      "XX(  \\_|    | /"],
+     [ -- 12
+      "X[\\^^\\XXXXXXXXX",
+      "X|:\\__\\XXXXXXXX",
+      "C|::|__|XXXXXXX",
+      "X|: :\\ \\XXXXXXX",
+      "X|:  :\\ \\XXXXXX",
+      "X|::\\ :\\ `\\XXXX",
+      "XX\\_:\\ :\\  \\XXX",
+      "XXX|\\:\\ :\\__\\XX",
+      "XX/|:\\:O :\\  `\\",
+      "X( |:|\\:::|^^^|"],
+     [ -- 13
+      "WXXXXXXXXXXXXXX",
+      "WWXXXXXXXXXXXXX",
+      "WWW[\\^^\\XXXXXXX",
+      "XWW|:\\__\\XXXXXX",
+      "XWC|::|__|XXXXX",
+      "XXW|: :\\ \\XXXXX",
+      "XXX|:  :\\ \\XXXX",
+      "XXX|::\\ :\\ `\\XX",
+      "XXXX\\_:\\ :\\  \\X",
+      "XXXX/ \\:\\ :\\__\\"
+     ]
   ]
 
 data GameState = GameState
@@ -212,6 +281,13 @@ grayscaleMap = ['M','$','o','?','/','!',';',':','\'','.','-']          -- charac
 fst3 (x, _, _) = x
 snd3 (_, x, _) = x
 thd3 (_, _, x) = x
+
+-----------------------------------------------
+
+splitChunks _ [] = []
+splitChunks n list = first : (splitChunks n rest)
+  where
+    (first,rest) = splitAt n list
 
 -----------------------------------------------   Fills given string with spaces to given length.
 
@@ -480,6 +556,31 @@ renderInfoBar gameState =
     emptyLine ++
     separator
       
+-----------------------------------------------   Overlays a string image over another
+
+overlay :: String -> String -> (Int,Int) -> (Int,Int) -> (Int,Int) -> Char -> String
+overlay background foreground position backgroundResolution foregroundResolution transparentChar =
+  let
+    backgroundLines = splitChunks (fst backgroundResolution) background
+    
+    (firstLines,restLines) = splitAt (snd position) backgroundLines
+    (secondLines,thirdLines) = splitAt (snd foregroundResolution) restLines
+    
+    foregroundLines =
+      [
+        take (fst position) (snd item) ++
+          [
+            if (fst chars) == transparentChar then (snd chars) else (fst chars)
+            | chars  <- zip (fst item) ( take (fst foregroundResolution)  (drop (fst position) (snd item)))
+          ] ++
+        drop (fst position + fst foregroundResolution) (snd item)
+        | item <- zip (splitChunks (fst foregroundResolution) foreground) secondLines
+      ]
+  in   
+    concat (firstLines) ++
+    concat (foregroundLines) ++
+    concat (thirdLines)
+
 -----------------------------------------------   Renders the game in 3D.
 
 renderGameState3D :: GameState -> String
@@ -487,11 +588,15 @@ renderGameState3D gameState =
   let
     drawInfo = castRays gameState
   in
-  --  (renderGameStateSimple gameState)
-  --  ++
-  --  "\n"
-  --  ++
-    render3Dview drawInfo (projectSprites gameState) (snd viewSize) (frameNumber gameState)
+    (
+      overlay
+        (render3Dview drawInfo (projectSprites gameState) (snd viewSize) (frameNumber gameState))
+        (concat (spriteList !! spriteFPGun))
+        weaponSpritePosition
+        (addPairs viewSize (1,0))
+        spriteSize
+        transparentChar
+    )
     ++
     renderInfoBar gameState
 
