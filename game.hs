@@ -40,6 +40,9 @@ fireRateKnife = 6
 fireRateGun = 10
 fireRateUzi = 4
 
+monsterHealthZombie = 100           -- initial health amounts
+monsterHealthDemon = 50
+
 weaponSpritePosition = ((fst viewSize) - (fst viewSize) `div` 3,1 + snd viewSize - snd spriteSize)
 
 type Weapon = Int
@@ -56,6 +59,12 @@ normalNorth = 0
 normalEast = 1
 normalSouth = 2
 normalWest = 3
+
+type MonsterType = Int
+monsterZombie = 0
+monsterDemon = 1
+
+type Position2D = (Double,Double)   -- in squares, starting top left
 
 gameMap1 = 
   [
@@ -76,7 +85,7 @@ gameMap1 =
     0,0,0,0,0,0,0,0,0,0,0,0,0,0,0
   ]
 
-type Sprite = Int
+type SpriteType = Int
 spriteNone = -1
 spriteTree = 0
 spriteZombie = 1   -- animated, 2 frames
@@ -258,28 +267,65 @@ spriteList =
 
 data GameState = GameState
   {
-    playerPos :: (Double,Double),          -- x, y, starting top left (map AND square)
-    playerRot :: Double,                   -- rotation in radians, CCW, 0 = facing right
-    frameNumber :: Int,
-    currentWeapon :: Int,
-    currentLevel :: Int,
-    currentScore :: Int,
-    gameMap :: [Int],
-    sprites :: [((Double,Double),Sprite)], -- list of sprites with world position
-    fireCountdown :: Int                   -- counter for implementing different fire rates
+    playerPos ::      Position2D,
+    playerRot ::      Double,                          -- rotation in radians, CCW, 0 = facing right
+    frameNumber ::    Int,
+    currentWeapon ::  Int,
+    currentLevel ::   Int,
+    currentScore ::   Int,
+    gameMap ::        [Int],
+    monsters ::       [Monster],                       -- list of monsters
+    sprites ::        [Sprite],                        -- list of sprites
+    fireCountdown ::  Int                              -- counter for implementing different fire rates
   } deriving (Show)
   
+data Sprite = Sprite
+  {
+    spriteType ::      SpriteType,
+    spritePos ::       Position2D
+  } deriving (Show)
+  
+data Monster = Monster
+  {
+    monsterType ::    MonsterType,
+    monsterPos ::     Position2D,
+    health ::         Int
+  } deriving (Show)
+  
+newMonster :: MonsterType -> Position2D -> Monster
+newMonster monsterType initialPosition = Monster
+  {
+    monsterType = monsterType,
+    monsterPos = initialPosition,
+    health = 
+      if monsterType == monsterZombie
+        then monsterHealthZombie
+        else monsterHealthDemon 
+  }
+  
+initialGameState :: GameState
 initialGameState = GameState
   {
-    playerPos = (7.5,8.5),
-    playerRot = 0.0,
-    frameNumber = 0,
-    currentWeapon = 0,
-    currentLevel = 1,
-    currentScore = 0,
-    gameMap = gameMap1,
-    sprites =
+    playerPos       = (7.5,8.5),
+    playerRot       = 0.0,
+    frameNumber     = 0,
+    currentWeapon   = 0,
+    currentLevel    = 1,
+    currentScore    = 0,
+    gameMap         = gameMap1,
+    monsters        =
       [
+        newMonster monsterZombie (6,7),
+        newMonster monsterDemon (8,5)
+      ],
+        
+{-    monsters        =
+      [
+        ((7.5,7.5),monsterZombie,monsterHealthZombie),
+        ((8.5,6.5),monsterDemon,monsterHealthDemon)
+        ], -}
+    sprites = [],
+{-      [
         ((7.5,7.5),spriteTree),
         ((6.5,7.5),spriteZombie),
         ((7.5,2.5),spriteTree),
@@ -288,8 +334,8 @@ initialGameState = GameState
         ((9.0,6.5),spriteGun),
         ((2.0,8.0),spriteUzi),
         ((12.0,13.0),spriteMedkit)
-      ],
-    fireCountdown = 0
+        ], -}
+    fireCountdown   = 0
   }
 
 -----------------------------------------------   Functions for 3-item tuples.
@@ -343,7 +389,7 @@ tanSafeAngle angle
 
 -----------------------------------------------
 
-vectorAngle :: (Double,Double) -> Double
+vectorAngle :: Position2D -> Double
 vectorAngle vector =
   atan2 (-1 * (snd vector)) (fst vector)
 
@@ -364,7 +410,7 @@ angleTo02Pi angle =
 
 -----------------------------------------------   Gets distance of two points.
 
-pointPointDistance :: (Double, Double) -> (Double, Double) -> Double
+pointPointDistance :: Position2D -> Position2D -> Double
 pointPointDistance point1 point2 =
   let
     dx = (fst point1) - (fst point2)
@@ -386,7 +432,7 @@ arrayToMapCoords coords =
 
 -----------------------------------------------   Computes an intersection point of two lines.
 
-lineLineIntersection :: (Double, Double) -> Double -> (Double, Double) -> Double -> (Double, Double)
+lineLineIntersection :: Position2D -> Double -> Position2D -> Double -> Position2D
 lineLineIntersection position1 angle1 position2 angle2 =
   let
     tan1 = tan (tanSafeAngle angle1)
@@ -424,26 +470,27 @@ distanceToSize distance =
 -----------------------------------------------   Projects sprites to screen space, returns a list representing screen, each
                                              --   pixel has (sprite id,sprite x pixel,distance), sprite id = -1 => empty.
 
-projectSprites :: GameState -> [(Sprite,Int,Double)]
+projectSprites :: GameState -> [(SpriteType,Int,Double)]
 projectSprites gameState =
   let
     -- project all sprites to screenspace first:
     screenspaceSprites =                                         -- [(sprite id,sprite x pixel,distance)]
       [
         (
-          snd sprite,                                            -- sprite id
+          spriteType sprite,                                     
             0.5 +                                                -- sprite center in screenspace, normalized
             (
-              angleAngleDifference (playerRot gameState) ( vectorAngle ( fst (fst sprite) - fst (playerPos gameState), snd (fst sprite) - snd (playerPos gameState) ) )
+              angleAngleDifference (playerRot gameState) ( vectorAngle ( fst (spritePos sprite) - fst (playerPos gameState), snd (spritePos sprite) - snd (playerPos gameState) ) )
             )
             / fieldOfView
             ,
-          pointPointDistance (playerPos gameState) (fst sprite)  -- sprite distance
+          pointPointDistance (playerPos gameState) (spritePos sprite)   -- sprite distance
         )
         | sprite <- (sprites gameState)
       ]
       
-    projectOneSprite :: (Sprite,Double,Double) -> [(Sprite,Int,Double)] -> [(Sprite,Int,Double)]  -- [(sprite id,sprite x pixel,distance)]
+    -- projects one sprite (sprite,x,y) to a screen list [(sprite id,sprite x pixel,distance)]
+    projectOneSprite :: (SpriteType,Double,Double) -> [(SpriteType,Int,Double)] -> [(SpriteType,Int,Double)]  
     projectOneSprite =                  -- projects a single sprite to screen list
       (
         \spriteInfo screenList ->
@@ -488,7 +535,7 @@ projectSprites gameState =
       
 -----------------------------------------------   Samples given sprite.
 
-sampleSprite :: Sprite -> (Int,Int) -> Int -> Char
+sampleSprite :: SpriteType -> (Int,Int) -> Int -> Char
 sampleSprite spriteId coordinates animationFrame =
   let
     safeCoords =
@@ -501,14 +548,14 @@ sampleSprite spriteId coordinates animationFrame =
     
 -----------------------------------------------   Gets animation frame for current frame number.
 
-animationFrameForSprite :: Sprite -> Int -> Int
+animationFrameForSprite :: SpriteType -> Int -> Int
 animationFrameForSprite spriteId frameNumber
   | ((frameNumber `div` animationFrameStep) `mod` 2 == 1) && (spriteId `elem` animatedSpriteIds) = 1
   | otherwise = 0
 
 -----------------------------------------------   Renders the 3D player view (no bar or weapon) into String.
 
-render3Dview :: [(Double, Normal)] -> [(Sprite,Int,Double)] -> Int -> Int -> String
+render3Dview :: [(Double, Normal)] -> [(SpriteType,Int,Double)] -> Int -> Int -> String
 render3Dview wallMap spriteMap height frameNumber =
   let
     middle = div height 2 + 1                     -- middle line of the view
@@ -702,7 +749,7 @@ castRays gameState =
 
 -----------------------------------------------   Casts a ray and returns an information (distance, normal) about a wall it hits.
 
-castRay :: GameState -> (Double, Double) -> (Int, Int) -> Double -> Int ->  (Double, Normal)
+castRay :: GameState -> Position2D -> (Int, Int) -> Double -> Int ->  (Double, Normal)
 castRay gameState rayOrigin square rayDirection maxIterations =
   let
     squareCoords = floorPair rayOrigin
@@ -729,7 +776,7 @@ castRay gameState rayOrigin square rayDirection maxIterations =
 
 -----------------------------------------------   Casts a ray inside a single square, returns (intersection point with square bounds,next square offset)
 
-castRaySquare :: (Int, Int) -> (Double, Double) -> Double -> ((Double, Double),(Int, Int))
+castRaySquare :: (Int, Int) -> Position2D -> Double -> (Position2D,(Int, Int))
 castRaySquare squareCoords rayPosition rayAngle =
   let
     angle = 2 * pi - rayAngle
@@ -751,10 +798,49 @@ mapSquareAt gameState coords
 
 -----------------------------------------------   Checks if given player position is valid (collisions).
 
-positionIsWalkable :: GameState -> (Double,Double) -> Bool
+positionIsWalkable :: GameState -> Position2D -> Bool
 positionIsWalkable gameState position =
   (mapSquareAt gameState (floorPair position)) == squareEmpty
 
+-----------------------------------------------
+
+monsterSprite :: MonsterType -> Int
+monsterSprite monsterId
+  | monsterId == monsterZombie = spriteZombie
+  | monsterId == monsterDemon  = spriteDemon
+  | otherwise                  = spriteZombie
+  
+-----------------------------------------------   Creates sprites and places them on the map depending on current state of things.
+
+updateSprites :: GameState -> GameState
+updateSprites gameState =
+  gameState
+    {
+      sprites =
+        [
+          Sprite {spriteType = monsterSprite (monsterType monster), spritePos = (monsterPos monster)}
+          | monster <- (monsters gameState)
+        ]
+    }
+
+-----------------------------------------------   Runs the AI for each monster, updating their positions etc.
+
+updateMonsters :: GameState -> GameState
+updateMonsters gameState =
+  gameState
+    {
+      monsters =
+        [
+          Monster
+           {
+             monsterType = (monsterType monster),
+             monsterPos  = addPairs (monsterPos monster) (0.01,0.01),
+             health      = (health monster)
+           }
+          | monster <- filter (\m -> (health m) > 0) (monsters gameState)  -- health = 0 => monster is dead, filter it out
+        ]
+    }
+  
 -----------------------------------------------   Moves player by given distance in given direction, with collisions.
 
 movePlayerInDirection :: GameState -> Double -> Double -> GameState
@@ -817,7 +903,9 @@ nextGameState previousGameState inputChar =
         'p' -> fire previousGameState
         _   -> previousGameState
   in
-    newGameState
+    (
+      updateMonsters $ updateSprites newGameState
+    )
     {
       frameNumber = (frameNumber newGameState) + 1
     }
