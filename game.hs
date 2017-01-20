@@ -17,6 +17,8 @@ import Data.List
 
 frameDelay = 10000                  -- in microseconds
 stepLength = 0.1
+monsterZombieStepLength = 0.01
+monsterDemonStepLength = 0.09
 rotationStep = 0.06
 mapSize = (15,15)
 infoBarHeight = 5
@@ -31,10 +33,12 @@ totalMapSquares = (fst mapSize) * (snd mapSize)
 rayAngleStep = fieldOfView / fromIntegral (fst viewSize)
 infinity = 1.0 / 0.0
 animationFrameStep = 4
+spriteDepthBias = 1                 -- so that sprites don't disappear in walls
 backgroundChar = ' '
 transparentChar = 'X'               -- marks transparency in sprites
 emptyLines = 3                      -- number of empty lines added before each rendered frame
 emptyLineString = ['\n' | i <- [1..emptyLines]]
+recomputeAIin = 64
 
 fireRateKnife = 6
 fireRateGun = 10
@@ -289,7 +293,9 @@ data Monster = Monster
   {
     monsterType ::    MonsterType,
     monsterPos ::     Position2D,
-    health ::         Int
+    health ::         Int,
+    countdownAI ::    Int,
+    monsterRot ::     Double
   } deriving (Show)
   
 newMonster :: MonsterType -> Position2D -> Monster
@@ -300,7 +306,9 @@ newMonster monsterType initialPosition = Monster
     health = 
       if monsterType == monsterZombie
         then monsterHealthZombie
-        else monsterHealthDemon 
+        else monsterHealthDemon,
+    countdownAI = 0,
+    monsterRot = 0
   }
   
 initialGameState :: GameState
@@ -318,23 +326,7 @@ initialGameState = GameState
         newMonster monsterZombie (6,7),
         newMonster monsterDemon (8,5)
       ],
-        
-{-    monsters        =
-      [
-        ((7.5,7.5),monsterZombie,monsterHealthZombie),
-        ((8.5,6.5),monsterDemon,monsterHealthDemon)
-        ], -}
     sprites = [],
-{-      [
-        ((7.5,7.5),spriteTree),
-        ((6.5,7.5),spriteZombie),
-        ((7.5,2.5),spriteTree),
-        ((3.0,6.0),spriteDemon),
-        ((8.1,8.5),spriteDemon),
-        ((9.0,6.5),spriteGun),
-        ((2.0,8.0),spriteUzi),
-        ((12.0,13.0),spriteMedkit)
-        ], -}
     fireCountdown   = 0
   }
 
@@ -373,6 +365,11 @@ clamp value (minimum, maximum) =
 
 addPairs :: (Num a) => (Num b) => (a, b) -> (a, b) -> (a, b)
 addPairs (x1, y1) (x2, y2) = (x1 + x2, y1 + y2)
+
+-----------------------------------------------
+
+substractPairs :: (Num a) => (Num b) => (a, b) -> (a, b) -> (a, b)
+substractPairs (x1, y1) (x2, y2) = (x1 - x2, y1 - y2)
 
 -----------------------------------------------   Applies floor function to both items of a pair.
 
@@ -484,7 +481,7 @@ projectSprites gameState =
             )
             / fieldOfView
             ,
-          pointPointDistance (playerPos gameState) (spritePos sprite)   -- sprite distance
+          (pointPointDistance (playerPos gameState) (spritePos sprite)) - spriteDepthBias   -- sprite distance
         )
         | sprite <- (sprites gameState)
       ]
@@ -807,8 +804,14 @@ positionIsWalkable gameState position =
 monsterSprite :: MonsterType -> Int
 monsterSprite monsterId
   | monsterId == monsterZombie = spriteZombie
-  | monsterId == monsterDemon  = spriteDemon
-  | otherwise                  = spriteZombie
+  | otherwise                  = spriteDemon
+  
+-----------------------------------------------
+
+monsterStepLength :: MonsterType -> Double
+monsterStepLength monsterId
+  | monsterId == monsterZombie = monsterZombieStepLength
+  | otherwise                  = monsterDemonStepLength
   
 -----------------------------------------------   Creates sprites and places them on the map depending on current state of things.
 
@@ -823,6 +826,33 @@ updateSprites gameState =
         ]
     }
 
+-----------------------------------------------   
+
+monsterAI :: GameState -> Monster -> Monster
+monsterAI gameState whatMonster =
+  let
+    rotation =
+      if (monsterType whatMonster) == monsterZombie
+        then vectorAngle $ substractPairs (playerPos gameState) (monsterPos whatMonster)  -- zombie walks towards the player
+        else
+          if (countdownAI whatMonster) == 0
+            then angleTo02Pi ((fst (monsterPos whatMonster)) + (snd (monsterPos whatMonster)) + (fromIntegral (frameNumber gameState)) / 100.0)
+            else (monsterRot whatMonster)
+  in
+    whatMonster
+      {
+        monsterPos = moveWithCollision gameState (monsterPos whatMonster) (monsterRot whatMonster) (monsterStepLength (monsterType whatMonster))
+      }
+      {
+        monsterRot = rotation
+      }
+      {
+        countdownAI = 
+          if (countdownAI whatMonster) <= 0
+            then recomputeAIin
+            else (countdownAI whatMonster) - 1
+      }
+    
 -----------------------------------------------   Runs the AI for each monster, updating their positions etc.
 
 updateMonsters :: GameState -> GameState
@@ -831,16 +861,31 @@ updateMonsters gameState =
     {
       monsters =
         [
-          Monster
-           {
-             monsterType = (monsterType monster),
-             monsterPos  = addPairs (monsterPos monster) (0.01,0.01),
-             health      = (health monster)
-           }
+          monsterAI gameState monster
           | monster <- filter (\m -> (health m) > 0) (monsters gameState)  -- health = 0 => monster is dead, filter it out
         ]
     }
-  
+    
+-----------------------------------------------
+
+moveWithCollision :: GameState -> Position2D -> Double -> Double -> Position2D
+moveWithCollision gameState positionFrom angle distance =
+  let
+    plusX = cos angle * distance
+    plusY = -1 * (sin angle * distance)
+  in
+    (
+      (fst positionFrom) + 
+      if positionIsWalkable gameState ((fst positionFrom) + plusX,snd positionFrom)
+        then plusX
+        else 0,
+      
+      (snd positionFrom) + 
+      if positionIsWalkable gameState (fst positionFrom,(snd positionFrom) + plusY)
+        then plusY
+        else 0
+    )
+      
 -----------------------------------------------   Moves player by given distance in given direction, with collisions.
 
 movePlayerInDirection :: GameState -> Double -> Double -> GameState
@@ -862,19 +907,25 @@ movePlayerInDirection previousGameState angle distance =
               then plusY
               else 0
           )
-      }    
+      }
 
 -----------------------------------------------   Moves the player forward by given distance, with collisions.
 
 movePlayerForward :: GameState -> Double -> GameState
 movePlayerForward previousGameState distance =
-  movePlayerInDirection previousGameState (playerRot previousGameState) distance
+  previousGameState
+    {
+      playerPos = moveWithCollision previousGameState (playerPos previousGameState) (playerRot previousGameState) distance
+    }
 
 -----------------------------------------------   Strafes the player left by given distance (with collisions).
 
 strafePlayer :: GameState -> Double -> GameState
 strafePlayer previousGameState distance =
-  movePlayerInDirection previousGameState (angleTo02Pi ((playerRot previousGameState) + pi / 2)) distance
+  previousGameState
+    {
+      playerPos = moveWithCollision previousGameState (playerPos previousGameState) (angleTo02Pi ((playerRot previousGameState) + pi / 2)) distance
+    }
 
 -----------------------------------------------
 
