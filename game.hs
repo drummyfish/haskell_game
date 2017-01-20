@@ -1,8 +1,10 @@
-{- 
+{----------------------------------------
+
   raycasting game in Haskell
   
   Miloslav Číž, 2017
--}
+  
+----------------------------------------}
 
 import System.IO
 import System.Timeout
@@ -13,13 +15,13 @@ import Control.Concurrent
 import System.CPUTime
 import Data.List
 
-frameDelay = 10000     -- in microseconds
+frameDelay = 10000                  -- in microseconds
 stepLength = 0.1
 rotationStep = 0.06
 mapSize = (15,15)
 infoBarHeight = 5
 screenSize = (100,35)
-viewSize = ( (fst screenSize) , (snd screenSize) - infoBarHeight)
+viewSize = ( (fst screenSize) , (snd screenSize) - infoBarHeight )
 fieldOfView = pi / 2
 focalLength = 0.5
 maxRaycastIterations = 20
@@ -31,12 +33,14 @@ infinity = 1.0 / 0.0
 animationFrameStep = 4
 backgroundChar = ' '
 transparentChar = 'X'               -- marks transparency in sprites
+emptyLines = 3                      -- number of empty lines added before each rendered frame
+emptyLineString = ['\n' | i <- [1..emptyLines]]
 
 fireRateKnife = 6
 fireRateGun = 10
 fireRateUzi = 4
 
-weaponSpritePosition = ((fst viewSize) `div` 2,1 + snd viewSize - snd spriteSize)
+weaponSpritePosition = ((fst viewSize) - (fst viewSize) `div` 3,1 + snd viewSize - snd spriteSize)
 
 type Weapon = Int
 weaponKnife = 0
@@ -76,19 +80,20 @@ type Sprite = Int
 spriteNone = -1
 spriteTree = 0
 spriteZombie = 1   -- animated, 2 frames
-
+-- skip
 spriteDemon = 3    -- animated, 2 frames
-
+-- skip
 spriteGun = 5
 spriteUzi = 6
 spriteMedkit = 7
-
+-- skip
 spriteFPKnife = 8  -- animated, 2 frames
-
+-- skip
 spriteFPGun = 10   -- animated, 2 frames
-
+-- skip
 spriteFPUzi = 12   -- animated, 2 frames
 
+grayscaleMap = ['M','$','o','?','/','!',';',':','\'','.','-']          -- characters sorted by brigtness
 
 animatedSpriteIds = [1,3,8,10,12]     -- list of sprite IDs that are animated
 
@@ -287,15 +292,13 @@ initialGameState = GameState
     fireCountdown = 0
   }
 
-grayscaleMap = ['M','$','o','?','/','!',';',':','\'','.','-']          -- characters sorted by brigtness
-
 -----------------------------------------------   Functions for 3-item tuples.
 
 fst3 (x, _, _) = x
 snd3 (_, x, _) = x
 thd3 (_, _, x) = x
 
------------------------------------------------
+-----------------------------------------------   Splits given list to chunks of size n.
 
 splitChunks _ [] = []
 splitChunks n list = first : (splitChunks n rest)
@@ -347,14 +350,12 @@ vectorAngle vector =
 -----------------------------------------------   Returns the result of angle1 - angle2 closest to 0.
 
 angleAngleDifference :: Double -> Double -> Double
-angleAngleDifference angle1 angle2 =
-  let
-   difference = angleTo02Pi (angle1 - angle2)
-  in
-   if difference > pi
-     then difference - 2 * pi
-     else difference
-   
+angleAngleDifference angle1 angle2 
+  | difference > pi = difference - 2 * pi
+  | otherwise       = difference
+  where 
+    difference = angleTo02Pi (angle1 - angle2)
+    
 -----------------------------------------------
 
 angleTo02Pi :: Double -> Double
@@ -394,17 +395,20 @@ lineLineIntersection position1 angle1 position2 angle2 =
     p1y  = snd position1
     p2x  = fst position2
     p2y  = snd position2
-    denominator = tan1 - tan2
+    denom = tan1 - tan2
   in
-    let x = (p2y - tan2 * p2x - p1y + tan1 * p1x) / denominator
+    let x = (p2y - tan2 * p2x - p1y + tan1 * p1x) / denom
     in (x,if abs tan1 < abs tan2 then tan1 * x + (p1y - tan1 * p1x) else tan2 * x + (p2y - tan2 * p2x))
 
 -----------------------------------------------   Maps normalized intensity to ASCII character.
 
 intensityToChar :: Double -> Char
 intensityToChar intensity =
-  grayscaleMap !! (clamp (floor (intensity * fromIntegral (length grayscaleMap))) (0,((length grayscaleMap) - 1)))
-
+  let
+    safeIndex = clamp (floor (intensity * fromIntegral (length grayscaleMap))) (0,(length grayscaleMap) - 1)
+  in
+    grayscaleMap !! safeIndex 
+    
 -----------------------------------------------   Returns an intensity addition (possibly negative) cause by distance.
 
 distanceToIntensity :: Double -> Double
@@ -502,12 +506,12 @@ animationFrameForSprite spriteId frameNumber
   | ((frameNumber `div` animationFrameStep) `mod` 2 == 1) && (spriteId `elem` animatedSpriteIds) = 1
   | otherwise = 0
 
------------------------------------------------   Renders the 3D player view into String.
+-----------------------------------------------   Renders the 3D player view (no bar or weapon) into String.
 
 render3Dview :: [(Double, Normal)] -> [(Sprite,Int,Double)] -> Int -> Int -> String
 render3Dview wallMap spriteMap height frameNumber =
   let
-    middle = div height 2 + 1
+    middle = div height 2 + 1                     -- middle line of the view
     heightDouble = (fromIntegral height)
   in
     concat
@@ -539,15 +543,15 @@ render3Dview wallMap spriteMap height frameNumber =
                   sampleY = round (((1 - (1 + (fromIntegral distanceFromMiddle) / (fromIntegral spriteHalfHeight)) / 2)) * fromIntegral ((snd spriteSize) - 1))
                   spriteSample = sampleSprite (fst3 spriteInfo) (sampleX,sampleY) (animationFrameForSprite (fst3 spriteInfo) frameNumber)
                 in
-                  if (thd3 spriteInfo) >= distance      -- is wall closer than sprite?
-                    then wallSample
-                  else
-                    if absDistanceFromMiddle <= spriteHalfHeight
-                      then
-                        if spriteSample /= transparentChar
-                          then spriteSample
-                          else wallSample
-                      else wallSample
+                  if (thd3 spriteInfo) >= distance                  -- is wall closer than sprite?
+                    then wallSample                                 
+                    else                                            -- sprite is closer  
+                      if absDistanceFromMiddle <= spriteHalfHeight  
+                        then
+                          if spriteSample /= transparentChar
+                            then spriteSample
+                            else wallSample
+                        else wallSample
             )
             (zip wallMap spriteMap) ++ "\n"
         | i <- [1..height]
@@ -612,21 +616,20 @@ weaponSprite weaponId
   | weaponId == weaponUzi   = spriteFPUzi
   | otherwise               = spriteFPKnife
   
-
 -----------------------------------------------   Renders the game in 3D.
 
 renderGameState :: GameState -> String
 renderGameState gameState =
   let
-    drawInfo = castRays gameState
+    wallDrawInfo = castRays gameState
     gunSprite = weaponSprite (currentWeapon gameState) +
-      if (fireCountdown gameState) /= 0 --  > (weaponFireRate (currentWeapon gameState)) - 3 -- == 0 --(fireCountdown gameState)
+      if (fireCountdown gameState) /= 0
         then 1
         else 0
   in
     (
       overlay
-        (render3Dview drawInfo (projectSprites gameState) (snd viewSize) (frameNumber gameState))
+        (render3Dview wallDrawInfo (projectSprites gameState) (snd viewSize) (frameNumber gameState))
         (concat (spriteList !! gunSprite))
         weaponSpritePosition
         (addPairs viewSize (1,0))
@@ -671,8 +674,6 @@ renderMap gameState =
             )
         ) (zip (gameMap gameState) [0..])
     )
-  ++
-  "\npos: " ++ (show (playerPos gameState)) ++ "\nrot: " ++ (show (playerRot gameState)) ++ "\n"
     
 -----------------------------------------------   Gets the distance from projection origin to projection plane.
 
@@ -686,14 +687,13 @@ castRays :: GameState -> [(Double, Normal)]
 castRays gameState =
   [
     let
-      rayDirection = ((playerRot gameState) + fieldOfView / 2 - (fromIntegral x) * rayAngleStep)
+      rayDirection = (playerRot gameState) + fieldOfView / 2 - (fromIntegral x) * rayAngleStep
       rayResult = castRay gameState (playerPos gameState) (floorPair (playerPos gameState)) rayDirection maxRaycastIterations
     in
       (
         max
-          (
-            (fst rayResult) - (distanceToProjectionPlane focalLength (abs $ (playerRot gameState) - rayDirection))
-          ) 0.0,
+          ( (fst rayResult) - (distanceToProjectionPlane focalLength (abs $ (playerRot gameState) - rayDirection)) )
+          0.0,
         snd rayResult
       )
 
@@ -834,14 +834,15 @@ getLastChar =
     
     if isInput
       then do
-             c1 <- getChar
-             c2 <- getLastChar
+        c1 <- getChar
+        c2 <- getLastChar
              
-             if c2 == ' '
-               then return c1
-               else return c2
+        if c2 == ' '
+          then return c1
+          else return c2
                
-      else do return ' '
+      else do
+        return ' '
     
 -----------------------------------------------   Main game loop.
 
@@ -851,7 +852,7 @@ gameLoop gameState =
     threadDelay frameDelay
     -- t1 <- getCPUTime                                          -- for profiling, comment out otherwise
     
-    putStrLn (renderGameState gameState)
+    putStrLn (emptyLineString ++ renderGameState gameState)
     
     -- t2 <- getCPUTime                                          -- for profiling, comment out otherwise
     -- putStrLn (show (fromIntegral (t2 - t1) / 10e9) ++ " ms")  -- for profiling, comment out otherwise
