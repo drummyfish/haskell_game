@@ -15,14 +15,14 @@ import Control.Concurrent
 import System.CPUTime
 import Data.List
 
-frameDelay = 10000                  -- in microseconds
+frameDelay = 100                    -- in microseconds
 stepLength = 0.1
-monsterZombieStepLength = 0.01
-monsterDemonStepLength = 0.09
+zombieStepLength = 0.01
+demonStepLength = 0.09
 rotationStep = 0.06
 mapSize = (15,15)
 infoBarHeight = 5
-screenSize = (100,35)
+screenSize = (150,45)
 viewSize = ( (fst screenSize) , (snd screenSize) - infoBarHeight )
 fieldOfView = pi / 2
 focalLength = 0.5
@@ -36,7 +36,7 @@ animationFrameStep = 4
 spriteDepthBias = 1                 -- so that sprites don't disappear in walls
 backgroundChar = ' '
 transparentChar = 'X'               -- marks transparency in sprites
-emptyLines = 3                      -- number of empty lines added before each rendered frame
+emptyLines = 15                     -- number of empty lines added before each rendered frame
 emptyLineString = ['\n' | i <- [1..emptyLines]]
 recomputeAIin = 64
 
@@ -49,44 +49,33 @@ monsterHealthDemon = 50
 
 weaponSpritePosition = ((fst viewSize) - (fst viewSize) `div` 3,1 + snd viewSize - snd spriteSize)
 
-type Weapon = Int
-weaponKnife = 0
-weaponGun = 1
-weaponUzi = 2
-
-type MapSquare = Int
-squareEmpty = 0                     -- map square enums
-squareWall = 1
-
-type Normal = Int                   -- possible wall normals
-normalNorth = 0
-normalEast = 1
-normalSouth = 2
-normalWest = 3
-
-type MonsterType = Int
-monsterZombie = 0
-monsterDemon = 1
-
 type Position2D = (Double,Double)   -- in squares, starting top left
+data MonsterType = Zombie | Demon deriving(Show, Eq)
+data Normal = NormalNorth | NormalWest | NormalSouth | NormalEast deriving(Show, Eq)
+data Weapon = Knife | Gun | Uzi deriving(Show, Eq)
+data MapSquare = SquareEmpty | SquareWall deriving(Show, Eq)
 
+sE = SquareEmpty                    -- short aliases
+sW = SquareWall
+
+gameMap1 :: [MapSquare]
 gameMap1 = 
   [
-    0,0,0,0,0,0,0,0,0,0,0,1,1,0,0,
-    0,0,0,1,0,0,1,0,0,0,0,0,0,0,0,
-    0,0,0,1,0,0,1,0,0,0,0,0,0,0,0,
-    0,0,0,1,0,0,1,0,0,0,0,0,0,0,0,
-    0,0,0,1,0,0,1,0,0,0,0,0,1,0,1,
-    0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,
-    0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,
-    0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,
-    0,0,0,0,0,0,0,0,0,0,0,0,0,1,0,
-    0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,
-    0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,
-    0,0,0,0,0,0,0,0,0,0,0,0,0,1,1,
-    0,0,0,0,0,0,0,0,0,0,0,0,0,1,1,
-    0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,
-    0,0,0,0,0,0,0,0,0,0,0,0,0,0,0
+    sE,sE,sE,sE,sE,sE,sE,sE,sE,sE,sE,sW,sW,sE,sE,
+    sE,sE,sE,sW,sE,sE,sW,sE,sE,sE,sE,sE,sE,sE,sE,
+    sE,sE,sE,sW,sE,sE,sW,sE,sE,sE,sE,sE,sE,sE,sE,
+    sE,sE,sE,sW,sE,sE,sW,sE,sE,sE,sE,sE,sE,sE,sE,
+    sE,sE,sE,sW,sE,sE,sW,sE,sE,sE,sE,sE,sW,sE,sW,
+    sE,sE,sE,sE,sE,sE,sE,sE,sE,sE,sE,sE,sE,sE,sE,
+    sE,sE,sE,sE,sE,sE,sE,sE,sE,sE,sE,sE,sE,sE,sE,
+    sE,sE,sE,sE,sE,sE,sE,sE,sE,sE,sE,sE,sE,sE,sE,
+    sE,sE,sE,sE,sE,sE,sE,sE,sE,sE,sE,sE,sE,sW,sE,
+    sE,sE,sE,sE,sE,sE,sE,sE,sE,sE,sE,sE,sE,sE,sE,
+    sE,sE,sE,sE,sE,sE,sE,sE,sE,sE,sE,sE,sE,sE,sE,
+    sE,sE,sE,sE,sE,sE,sE,sE,sE,sE,sE,sE,sE,sW,sW,
+    sE,sE,sE,sE,sE,sE,sE,sE,sE,sE,sE,sE,sE,sW,sW,
+    sE,sE,sE,sE,sE,sE,sE,sE,sE,sE,sE,sE,sE,sE,sE,
+    sE,sE,sE,sE,sE,sE,sE,sE,sE,sE,sE,sE,sE,sE,sE
   ]
 
 type SpriteType = Int
@@ -274,10 +263,10 @@ data GameState = GameState
     playerPos ::      Position2D,
     playerRot ::      Double,                          -- rotation in radians, CCW, 0 = facing right
     frameNumber ::    Int,
-    currentWeapon ::  Int,
+    currentWeapon ::  Weapon,
     currentLevel ::   Int,
     currentScore ::   Int,
-    gameMap ::        [Int],
+    gameMap ::        [MapSquare],
     monsters ::       [Monster],                       -- list of monsters
     sprites ::        [Sprite],                        -- list of sprites
     fireCountdown ::  Int                              -- counter for implementing different fire rates
@@ -304,7 +293,7 @@ newMonster monsterType initialPosition = Monster
     monsterType = monsterType,
     monsterPos = initialPosition,
     health = 
-      if monsterType == monsterZombie
+      if monsterType == Zombie
         then monsterHealthZombie
         else monsterHealthDemon,
     countdownAI = 0,
@@ -317,14 +306,14 @@ initialGameState = GameState
     playerPos       = (7.5,8.5),
     playerRot       = 0.0,
     frameNumber     = 0,
-    currentWeapon   = 0,
+    currentWeapon   = Knife,
     currentLevel    = 1,
     currentScore    = 0,
     gameMap         = gameMap1,
     monsters        =
       [
-        newMonster monsterZombie (6,7),
-        newMonster monsterDemon (8,5)
+        newMonster Zombie (6,7),
+        newMonster Demon (8,5)
       ],
     sprites = [],
     fireCountdown   = 0
@@ -576,9 +565,9 @@ render3Dview wallMap spriteMap height frameNumber =
                   wallSample =
                     if absDistanceFromMiddle < columnHeight
                       then
-                        if normal == normalNorth then      intensityToChar $ 0.25 + distanceToIntensity distance
-                        else if normal == normalEast then  intensityToChar $ 0.50 + distanceToIntensity distance
-                        else if normal == normalSouth then intensityToChar $ 0.75 + distanceToIntensity distance
+                        if normal == NormalNorth then      intensityToChar $ 0.25 + distanceToIntensity distance
+                        else if normal == NormalEast then  intensityToChar $ 0.50 + distanceToIntensity distance
+                        else if normal == NormalSouth then intensityToChar $ 0.75 + distanceToIntensity distance
                         else                               intensityToChar $ 1.00 + distanceToIntensity distance
                       else backgroundChar
                   
@@ -646,19 +635,19 @@ overlay background foreground position backgroundResolution foregroundResolution
 
 weaponFireRate :: Weapon -> Int
 weaponFireRate weaponId
-  | weaponId == weaponKnife = fireRateKnife
-  | weaponId == weaponGun   = fireRateGun
-  | weaponId == weaponUzi   = fireRateUzi
-  | otherwise               = 1
+  | weaponId == Knife = fireRateKnife
+  | weaponId == Gun   = fireRateGun
+  | weaponId == Uzi   = fireRateUzi
+  | otherwise         = 1
  
 -----------------------------------------------
 
 weaponSprite :: Weapon -> Int
 weaponSprite weaponId
-  | weaponId == weaponKnife = spriteFPKnife
-  | weaponId == weaponGun   = spriteFPGun
-  | weaponId == weaponUzi   = spriteFPUzi
-  | otherwise               = spriteFPKnife
+  | weaponId == Knife = spriteFPKnife
+  | weaponId == Gun   = spriteFPGun
+  | weaponId == Uzi   = spriteFPUzi
+  | otherwise         = spriteFPKnife
   
 -----------------------------------------------   Renders the game in 3D.
 
@@ -712,7 +701,7 @@ renderMap gameState =
                     6 -> ".|"
                     7 -> "\\."
                     8 -> "->"
-                else if fst square == squareEmpty
+                else if fst square == SquareEmpty
                   then "  "
                   else "[]"
             )
@@ -752,8 +741,8 @@ castRay gameState rayOrigin square rayDirection maxIterations =
     squareCoords = floorPair rayOrigin
     angle = angleTo02Pi rayDirection
   in
-    if (mapSquareAt gameState square) /= squareEmpty || maxIterations == 0
-      then (0,normalNorth)
+    if (mapSquareAt gameState square) /= SquareEmpty || maxIterations == 0
+      then (0,NormalNorth)
       else
         let
           squareCastResult = castRaySquare square rayOrigin angle
@@ -765,10 +754,10 @@ castRay gameState rayOrigin square rayDirection maxIterations =
               then (snd recursionResult)
               else
                 case (snd squareCastResult) of
-                  (1,0)  -> normalEast
-                  (0,1)  -> normalSouth
-                  (-1,0) -> normalWest
-                  _      -> normalNorth
+                  (1,0)  -> NormalEast
+                  (0,1)  -> NormalSouth
+                  (-1,0) -> NormalWest
+                  _      -> NormalNorth
           )
 
 -----------------------------------------------   Casts a ray inside a single square, returns (intersection point with square bounds,next square offset)
@@ -791,27 +780,27 @@ castRaySquare squareCoords rayPosition rayAngle =
 mapSquareAt :: GameState -> (Int, Int) -> MapSquare
 mapSquareAt gameState coords 
   | (fst coords) < (fst mapSize) && (fst coords) >= 0 && (snd coords) < (snd mapSize) && (snd coords) >= 0 = (gameMap gameState) !! (mapToArrayCoords coords)
-  | otherwise = squareWall
+  | otherwise = SquareWall
 
 -----------------------------------------------   Checks if given player position is valid (collisions).
 
 positionIsWalkable :: GameState -> Position2D -> Bool
 positionIsWalkable gameState position =
-  (mapSquareAt gameState (floorPair position)) == squareEmpty
+  (mapSquareAt gameState (floorPair position)) == SquareEmpty
 
 -----------------------------------------------
 
 monsterSprite :: MonsterType -> Int
 monsterSprite monsterId
-  | monsterId == monsterZombie = spriteZombie
+  | monsterId == Zombie = spriteZombie
   | otherwise                  = spriteDemon
   
 -----------------------------------------------
 
 monsterStepLength :: MonsterType -> Double
 monsterStepLength monsterId
-  | monsterId == monsterZombie = monsterZombieStepLength
-  | otherwise                  = monsterDemonStepLength
+  | monsterId == Zombie = zombieStepLength
+  | otherwise                  = demonStepLength
   
 -----------------------------------------------   Creates sprites and places them on the map depending on current state of things.
 
@@ -832,7 +821,7 @@ monsterAI :: GameState -> Monster -> Monster
 monsterAI gameState whatMonster =
   let
     rotation =
-      if (monsterType whatMonster) == monsterZombie
+      if (monsterType whatMonster) == Zombie
         then vectorAngle $ substractPairs (playerPos gameState) (monsterPos whatMonster)  -- zombie walks towards the player
         else
           if (countdownAI whatMonster) == 0
@@ -948,9 +937,9 @@ nextGameState previousGameState inputChar =
         'd' -> previousGameState { playerRot = angleTo02Pi ((playerRot previousGameState) - rotationStep) }
         'q' -> strafePlayer previousGameState stepLength
         'e' -> strafePlayer previousGameState (-1 * stepLength)
-        '1' -> previousGameState { currentWeapon = 0 }
-        '2' -> previousGameState { currentWeapon = 1 }
-        '3' -> previousGameState { currentWeapon = 2 }
+        '1' -> previousGameState { currentWeapon = Knife }
+        '2' -> previousGameState { currentWeapon = Gun }
+        '3' -> previousGameState { currentWeapon = Uzi }
         'p' -> fire previousGameState
         _   -> previousGameState
   in
