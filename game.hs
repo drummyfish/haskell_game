@@ -434,18 +434,12 @@ arrayToMapCoords coords =
 -----------------------------------------------   Computes an intersection point of two lines.
 
 lineLineIntersection :: Position2D -> Double -> Position2D -> Double -> Position2D
-lineLineIntersection position1 angle1 position2 angle2 =
-  let
+lineLineIntersection (x1,y1) angle1 (x2,y2) angle2 = (x,y)
+  where
     tan1 = tan (tanSafeAngle angle1)
-    tan2 = tan (tanSafeAngle angle2)
-    p1x  = fst position1
-    p1y  = snd position1
-    p2x  = fst position2
-    p2y  = snd position2
-    denom = tan1 - tan2
-  in
-    let x = (p2y - tan2 * p2x - p1y + tan1 * p1x) / denom
-    in (x,if abs tan1 < abs tan2 then tan1 * x + (p1y - tan1 * p1x) else tan2 * x + (p2y - tan2 * p2x))
+    tan2 = tan (tanSafeAngle anggitle2)
+    x = (y2 - tan2 * x2 - y1 + tan1 * x1) / (tan1 - tan2)
+    y = if abs tan1 < abs tan2 then tan1 * x + (y1 - tan1 * x1) else tan2 * x + (y2 - tan2 * x2)
 
 -----------------------------------------------   Maps normalized intensity to ASCII character.
 
