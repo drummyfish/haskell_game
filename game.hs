@@ -15,6 +15,20 @@ import Control.Concurrent
 import System.CPUTime
 import Data.List
 
+-- key mapping:
+
+keyForward     = 'w'
+keyBackward    = 's'
+keyTurnLeft    = 'a'
+keyTurnRight   = 'd'
+keyStrafeLeft  = 'q'
+keyStrafeRight = 'e'
+keyFire        = 'p'
+keyWeapon1     = '1'
+keyWeapon2     = '2'
+keyWeapon3     = '3'
+keyQuit        = 'x'
+
 frameDelayMs = 16                         -- in milliseconds
 frameDelayUs = frameDelayMs * 1000        -- in microseconds
 stepLength = 0.1
@@ -931,18 +945,18 @@ nextGameState :: GameState -> Char -> GameState
 nextGameState previousGameState inputChar =
   let
     newGameState =
-      case inputChar of
-        'w' -> movePlayerForward previousGameState stepLength
-        's' -> movePlayerForward previousGameState (-1 * stepLength)
-        'a' -> previousGameState { playerRot = angleTo02Pi ((playerRot previousGameState) + rotationStep) }
-        'd' -> previousGameState { playerRot = angleTo02Pi ((playerRot previousGameState) - rotationStep) }
-        'q' -> strafePlayer previousGameState stepLength
-        'e' -> strafePlayer previousGameState (-1 * stepLength)
-        '1' -> previousGameState { currentWeapon = Knife }
-        '2' -> previousGameState { currentWeapon = Gun }
-        '3' -> previousGameState { currentWeapon = Uzi }
-        'p' -> fire previousGameState
-        _   -> previousGameState
+      case () of _ -- case with expressions hack
+                   | inputChar == keyForward     -> movePlayerForward previousGameState stepLength
+                   | inputChar == keyBackward    -> movePlayerForward previousGameState (-1 * stepLength)
+                   | inputChar == keyTurnLeft    -> previousGameState { playerRot = angleTo02Pi ((playerRot previousGameState) + rotationStep) }
+                   | inputChar == keyTurnRight   -> previousGameState { playerRot = angleTo02Pi ((playerRot previousGameState) - rotationStep) }
+                   | inputChar == keyStrafeLeft  -> strafePlayer previousGameState stepLength
+                   | inputChar == keyStrafeRight -> strafePlayer previousGameState (-1 * stepLength)
+                   | inputChar == keyFire        -> fire previousGameState
+                   | inputChar == keyWeapon1     -> previousGameState { currentWeapon = Knife }
+                   | inputChar == keyWeapon2     -> previousGameState { currentWeapon = Gun }
+                   | inputChar == keyWeapon3     -> previousGameState { currentWeapon = Uzi }
+                   | otherwise                   -> previousGameState
   in
     (
       updateMonsters $ updateSprites newGameState
@@ -992,10 +1006,10 @@ gameLoop gameState =
     
     hFlush stdout
     
-    case c of
-      'x' -> do putStrLn "quitting"
-      _   -> do gameLoop (nextGameState gameState c)
-    
+    if c == keyQuit
+      then do putStrLn "quitting"
+      else do gameLoop (nextGameState gameState c)
+      
 -----------------------------------------------
         
 main = 
