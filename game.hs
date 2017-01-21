@@ -15,7 +15,8 @@ import Control.Concurrent
 import System.CPUTime
 import Data.List
 
-frameDelay = 100                    -- in microseconds
+frameDelayMs = 16                         -- in milliseconds
+frameDelayUs = frameDelayMs * 1000        -- in microseconds
 stepLength = 0.1
 zombieStepLength = 0.01
 demonStepLength = 0.09
@@ -977,17 +978,19 @@ getLastChar =
 gameLoop :: GameState -> IO ()
 gameLoop gameState =
   do
-    threadDelay frameDelay
-    -- t1 <- getCPUTime                                          -- for profiling, comment out otherwise
+    t1 <- getCPUTime
     
     putStrLn (emptyLineString ++ renderGameState gameState)
     
-    -- t2 <- getCPUTime                                          -- for profiling, comment out otherwise
-    -- putStrLn (show (fromIntegral (t2 - t1) / 10e9) ++ " ms")  -- for profiling, comment out otherwise
+    c <- getLastChar
+    
+    t2 <- getCPUTime
+    threadDelay (frameDelayUs - ( (fromIntegral (t2 - t1)) `div` 1000000) )       -- wait for the rest of frame time
+    
+--    t3 <- getCPUTime
+--    putStrLn (show (fromIntegral (t3 - t1) / 10e9) ++ " ms")  -- for profiling, comment out otherwise
     
     hFlush stdout
-    
-    c <- getLastChar
     
     case c of
       'x' -> do putStrLn "quitting"
