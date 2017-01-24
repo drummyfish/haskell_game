@@ -29,8 +29,10 @@ keyWeapon2     = '2'
 keyWeapon3     = '3'
 keyQuit        = 'x'
 
-frameDelayMs = 16                         -- in milliseconds
-frameDelayUs = frameDelayMs * 1000        -- in microseconds
+disableAI = False                   -- for debug
+
+frameDelayMs = 16                   -- in milliseconds
+frameDelayUs = frameDelayMs * 1000  -- in microseconds
 stepLength = 0.1
 zombieStepLength = 0.01
 demonStepLength = 0.09
@@ -54,6 +56,9 @@ transparentChar = 'X'               -- marks transparency in sprites
 emptyLines = 15                     -- number of empty lines added before each rendered frame
 emptyLineString = ['\n' | i <- [1..emptyLines]]
 recomputeAIin = 64
+aimAccuracy = 0.32                  -- this constant is used in fire function to determine if a monster was hit
+knifeAttackDistance = 1.5
+weaponDamage = 20                   -- damage of all weapons
 
 fireRateKnife = 6
 fireRateGun = 10
@@ -328,7 +333,9 @@ initialGameState = GameState
     monsters        =
       [
         newMonster Zombie (6,7),
-        newMonster Demon (8,5)
+        newMonster Demon (8,5),
+        newMonster Demon (10,2),
+        newMonster Demon (2,10)
       ],
     sprites = [],
     fireCountdown   = 0
@@ -437,7 +444,7 @@ lineLineIntersection :: Position2D -> Double -> Position2D -> Double -> Position
 lineLineIntersection (x1,y1) angle1 (x2,y2) angle2 = (x,y)
   where
     tan1 = tan (tanSafeAngle angle1)
-    tan2 = tan (tanSafeAngle anggitle2)
+    tan2 = tan (tanSafeAngle angle2)
     x = (y2 - tan2 * x2 - y1 + tan1 * x1) / (tan1 - tan2)
     y = if abs tan1 < abs tan2 then tan1 * x + (y1 - tan1 * x1) else tan2 * x + (y2 - tan2 * x2)
 
@@ -855,14 +862,18 @@ monsterAI gameState whatMonster =
 
 updateMonsters :: GameState -> GameState
 updateMonsters gameState =
-  gameState
-    {
-      monsters =
-        [
-          monsterAI gameState monster
-          | monster <- filter (\m -> (health m) > 0) (monsters gameState)  -- health = 0 => monster is dead, filter it out
-        ]
-    }
+  if disableAI
+    then
+      gameState
+    else
+      gameState
+        {
+          monsters =
+            [
+              monsterAI gameState monster
+              | monster <- filter (\m -> (health m) > 0) (monsters gameState)  -- health = 0 => monster is dead, filter it out
+            ]
+        }
     
 -----------------------------------------------
 
@@ -930,7 +941,36 @@ strafePlayer previousGameState distance =
 fire :: GameState -> GameState
 fire gameState =
   if (fireCountdown gameState) == 0
-    then gameState { fireCountdown = weaponFireRate (currentWeapon gameState) }
+    then
+      gameState
+        { 
+          fireCountdown = weaponFireRate (currentWeapon gameState)
+        }
+        {
+          monsters =
+            filter
+              (\m -> (health m) > 0)
+
+              (
+                map
+                  (\m ->
+                    let
+                      angleDifference = abs $ angleAngleDifference (playerRot gameState) (vectorAngle $ substractPairs (monsterPos m) (playerPos gameState))
+                      monsterDistance = pointPointDistance (playerPos gameState) (monsterPos m)
+                      angleRange = 1.0 / (monsterDistance + aimAccuracy)
+                      wallDistance = fst $ castRay gameState (playerPos gameState) (floorPair (playerPos gameState)) (playerRot gameState) maxRaycastIterations
+                      maxDistance = if (currentWeapon gameState) == Knife then knifeAttackDistance else infinity
+                      hit = angleDifference < angleRange / 2 && monsterDistance <= wallDistance && monsterDistance <= maxDistance
+                    in
+                      m
+                        {
+                          health = if hit then (health m) - weaponDamage else (health m) 
+                        }
+                  )
+            
+                (monsters gameState)
+              )
+        }
     else gameState
   
 -----------------------------------------------   Computes the next game state.
